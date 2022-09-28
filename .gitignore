@@ -1,0 +1,8 @@
+*.o
+*.dump
+kernel
+toolchains
+build
+bak
+.bashrc
+log

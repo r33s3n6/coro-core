@@ -1,0 +1,36 @@
+USER_SPACE:=0
+
+PWD:=$(shell pwd)
+
+
+OBJS:=test_coroutine.o os/exception.o os/coroutine.o os/mm/utils.o os/mm/allocator.o
+
+CXX:=g++-10
+CXXFLAGS:=-fcoroutines -std=c++20 -fno-exceptions -g -I$(PWD)/os
+CXXFLAGS+= -O0
+
+ifeq ($(USER_SPACE),1)
+CXXFLAGS+= -DUSER_SPACE
+else
+CXXFLAGS+= -DKERNEL_SPACE -nostdlib -lgcc
+OBJS+= os/icxxabi.o os/log.o
+endif
+
+CRTI_OBJ=$(shell $(CXX) $(CXXFLAGS) -print-file-name=crti.o)
+CRTBEGIN_OBJ:=$(shell $(CXX) $(CXXFLAGS) -print-file-name=crtbegin.o)
+CRTEND_OBJ:=$(shell $(CXX) $(CXXFLAGS) -print-file-name=crtend.o)
+CRTN_OBJ=$(shell $(CXX) $(CXXFLAGS) -print-file-name=crtn.o)
+
+#OBJ_LINK_LIST:=$(CRTI_OBJ) $(CRTBEGIN_OBJ) $(OBJS) $(CRTEND_OBJ) $(CRTN_OBJ)
+OBJ_LINK_LIST:=$(OBJS)
+INTERNAL_OBJS:=$(OBJS)
+
+kernel: $(OBJ_LINK_LIST)
+	$(CXX) $(CXXFLAGS) -o kernel $(OBJ_LINK_LIST) -T os/kernel.ld
+ 
+clean:
+	rm -f kernel $(INTERNAL_OBJS)
+
+debug_core:
+	gdb kernel core
+
