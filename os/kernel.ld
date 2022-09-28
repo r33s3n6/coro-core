@@ -1,9 +1,4 @@
 OUTPUT_ARCH(riscv)
-/*
-OUTPUT_FORMAT("elf64-x86-64", "elf64-x86-64",
-          "elf64-x86-64")
-OUTPUT_ARCH(i386:x86-64)
-*/
 ENTRY(_entry)
 BASE_ADDRESS = 0x80200000;
 
