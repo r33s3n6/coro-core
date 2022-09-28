@@ -1,3 +1,5 @@
+# declare boot stack in bss section
+# and call kernel_init to start kernel
     .section .text.entry
     .globl _entry
 _entry:

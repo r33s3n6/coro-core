@@ -3,6 +3,4 @@
 
 void printf(char *, ...);
 
-#define assert(x, str) if(!(x)) printf("!!!!!!!!!!!!!!!!!!! assertion failed: %s\n", str)
-
 #endif // PRINTF_H

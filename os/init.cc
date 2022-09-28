@@ -1,7 +1,7 @@
 #include "mm/utils.h"
 #include "rustsbi/sbi.h"
-#include "log/printf.h"
 #include "log/log.h"
+#include "interrupt/plic.h"
 
 void clean_bss()
 {
@@ -10,20 +10,29 @@ void clean_bss()
 	memset(s_bss, 0, e_bss - s_bss);
 }
 
-extern "C" void _start();
+void call_kernel_start();
+
+int kernel_coroutine_test();
+int kernel_start(){
+	return kernel_coroutine_test();
+}
 
 extern "C" void kernel_init()
 {
+
 	clean_bss();
-	printf("hello world!\n");
-    _start();
-    panic("test panic");
+	printf("kernel_init: start!\n");
+
+
     /*
 	proc_init();
 	kinit();
 	kvm_init();
 	trap_init();
+	*/
 	plicinit();
+
+	/*
 	virtio_disk_init();
 	binit();
 	fsinit();
@@ -32,4 +41,8 @@ extern "C" void kernel_init()
 	infof("start scheduler!");
 	show_all_files();
 	scheduler();*/
+
+	// after init bss and enable paging, we can now do the real start
+    call_kernel_start();
+    shutdown();
 }

@@ -24,7 +24,7 @@ void* operator new(std::size_t size) {
     blocks[block_top].size = size;
     blocks[block_top].valid = true;
     block_top++;
-    printf("new %ld, ptr: %p\n", size, ptr);
+    printf("new %d, ptr: %p\n", size, ptr);
     return ptr;
 }
 

@@ -1,8 +1,9 @@
 #include "mm/utils.h"
 #include "coroutine.h"
-#include "log/printf.h"
+#include "log/log.h"
 
-#include "icxxabi.h"
+
+
 
 // yield
 struct data_t {
@@ -39,8 +40,8 @@ task<int> test_coroutine4_1(int* i) noexcept {
         // value = walker.promise().result;
 
         //printf("test_coroutine4: try to schedule out\n");
-        co_await kernel_scheduler.next_schedule;
-
+        // co_await kernel_scheduler.next_schedule;
+        co_await this_scheduler;
     }
 
     
@@ -65,11 +66,15 @@ task<int> test_coroutine4(int* i) noexcept {
 
 task<int> test_coroutine3(int* x) noexcept {
     printf("test_coroutine3: start\n"); 
-    for(int i=0;i<3;i++) {
-        //printf("test_coroutine3: try to schedule out\n");
-        co_await kernel_scheduler.next_schedule;
-        //printf("test_coroutine3: schedule back\n");
 
+    auto self = co_await get_taskbase_t{};
+    
+    printf("test_coroutine3: self:%p\n", self.address());
+
+    for(int i=0;i<3;i++) {
+
+        //co_await kernel_scheduler.next_schedule;
+        co_await this_scheduler;
         (*x)++;
     }
 
@@ -85,7 +90,7 @@ task<double> test_coroutine2(int* i) {
     printf("test_coroutine2: test_coroutine3 address: %p\n",t.address());
     std::optional<int> x = co_await t;
     printf("test_coroutine2: after test_coroutine3: x.has_value() = %d\n", x.has_value());
-    
+
     
     ++(*i);
     co_return *i;
@@ -119,8 +124,19 @@ task<void> test_coroutine(int* i) {
     co_return task_ok;
 }
 
-int main() {
-    assert(false,"assert test");
+
+
+struct global_test_t {
+    int i;
+    global_test_t() {
+        i = 0xf;
+    }
+} global_test;
+
+extern scheduler kernel_scheduler;
+int kernel_coroutine_test() {
+    // assert(false,"assert test");
+    assert(global_test.i == 0xf, "global_test.i should be 0xf");
     int test;
     test = 0;
 

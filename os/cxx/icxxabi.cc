@@ -51,11 +51,10 @@ extern void (*__fini_array_start []) (void) __attribute__((weak));
 extern void (*__fini_array_end []) (void) __attribute__((weak));
 
 
-extern "C" int main();
+int kernel_start();
 
 
-// start point for x86-64 user space test
-extern "C" void _start(){
+void call_kernel_start(){
 
     std::size_t count;
     std::size_t i;
@@ -69,25 +68,14 @@ extern "C" void _start(){
         __init_array_start[i] ();
 
 
-    int ret = main();
-    printf("main returned %d\n", ret);
+    int ret = kernel_start();
+    printf("kernel_start returned %d\n", ret);
 
     count = __fini_array_end - __fini_array_start;
     for (i = 0; i < count; i++)
         __fini_array_start[i] ();
 
     __cxa_finalize(0);
-
-#ifdef USER_SPACE
-    asm volatile("movl $60, %%eax\n"
-        "movl %0, %%edi\n"
-        "syscall\n"
-        "hlt"
-        :
-        : "m"(a)
-        );
-    __builtin_unreachable();
-#endif
     
 
 }

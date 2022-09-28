@@ -60,8 +60,7 @@ endif
 # empty target
 .FORCE:
 
-#LDFLAGS = -z max-page-size=4096
-LDFLAGS=
+LDFLAGS= -z max-page-size=4096
 
 $(AS_OBJS): $(BUILDDIR)/$K/%.o : $K/%.S
 	@mkdir -p $(@D)

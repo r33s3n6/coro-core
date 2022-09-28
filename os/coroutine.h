@@ -12,8 +12,6 @@
 
 
 struct scheduler;
-extern scheduler kernel_scheduler;
-
 
 
 template <typename T>
@@ -220,15 +218,10 @@ struct scheduler {
             printf("next_schedule: queue task %p\n", h.address());
             s->task_queue.emplace_back(std::move(h));
 
-            //printf("next_schedule: queue task size: %ld\n", s->task_queue.size());
-            //std::coroutine_handle<> t = s->task_queue.front();
-            //s->task_queue.pop();
-
-            // printf("next_schedule: try to switch to %p\n", t.address());
             return true; // go to scheduler
         }
         void await_resume() {
-            // printf("next_schedule: await_resume\n");
+            
         }
     } next_schedule;
 
@@ -241,6 +234,10 @@ struct scheduler {
     void schedule(task_base h) {
         h.promise().self_scheduler = this;
         task_queue.emplace_back(std::move(h));
+    }
+
+    bool free(){
+        return task_queue.empty();
     }
 
     void start() {
@@ -293,6 +290,32 @@ struct scheduler {
         }
     }
 };
+
+struct this_scheduler_t {
+    bool await_ready() { return false; }
+    bool await_suspend(task_base h) {
+        if(h.promise().self_scheduler->free()){
+            return false;
+        }
+        h.promise().self_scheduler->task_queue.emplace_back(std::move(h));
+        return true;
+    }
+    void await_resume() {}
+} this_scheduler;
+
+struct get_taskbase_t {
+    bool await_ready() { return false; }
+
+    task_base _task;
+    bool await_suspend(task_base h) {
+        _task = h;
+        return false;
+    }
+    task_base await_resume() {
+        return _task;
+    }
+};
+
 
 template <typename return_type>
 bool task<return_type>::await_suspend(task_base caller) {

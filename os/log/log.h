@@ -118,4 +118,11 @@ enum LOG_COLOR {
 		__builtin_unreachable();                                       \
 	} while (0)
 
+#define assert(x, str)                                  \
+	do {							                    \
+		if(!(x)) {										\
+			panic("assertion failed: %s\n", str); 		\
+		}												\
+	} while(0)
+	
 #endif //! LOG_H
