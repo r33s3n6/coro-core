@@ -2,7 +2,7 @@
 #include "coroutine.h"
 #include "log/log.h"
 
-
+#include <string>
 
 
 // yield
@@ -124,7 +124,24 @@ task<void> test_coroutine(int* i) {
     co_return task_ok;
 }
 
+task<std::string> test_coro_string(const std::string& x){
+    co_return "hello world: "+x;
+}
 
+task<void> test_coroutine_string() {
+    printf("test_coroutine_string: start\n");
+    std::optional<std::string> ret = co_await test_coro_string("this is async task");
+    if(ret){
+        printf("test_coroutine_string: %s\n", ret->c_str());
+        co_return task_ok;
+    } else {
+        printf("test_coroutine_string: failed\n");
+        co_return task_fail;
+    }
+
+
+    
+}
 
 struct global_test_t {
     int i;
@@ -149,8 +166,13 @@ int kernel_coroutine_test() {
     auto h4 = test_coroutine4(&test);
     printf("main: test_coroutine4 address: %p\n",h4.address());
 
+    printf("main: create test_coroutine_string\n");
+    auto h5 = test_coroutine_string();
+    printf("main: test_coroutine_string address: %p\n",h5.address());
+
     kernel_scheduler.schedule(h);
     kernel_scheduler.schedule(h4);
+    kernel_scheduler.schedule(h5);
 
 
     kernel_scheduler.start();

@@ -39,7 +39,7 @@ static void printptr(uint64 x)
 }
 
 // Print to the console. only understands %d, %x, %p, %s.
-void printf(char *fmt, ...)
+extern "C" int printf(const char *__restrict fmt, ...)
 {
 	va_list ap;
 	int i, c;
@@ -83,5 +83,6 @@ void printf(char *fmt, ...)
 			break;
 		}
 	}
+	return 0;
 }
 #pragma GCC diagnostic pop

@@ -291,17 +291,21 @@ struct scheduler {
     }
 };
 
+
 struct this_scheduler_t {
-    bool await_ready() { return false; }
-    bool await_suspend(task_base h) {
+    enum class _Construct { _Token };
+    explicit constexpr this_scheduler_t(_Construct) {}
+    bool await_ready() const{ return false; }
+    bool await_suspend(task_base h) const{
         if(h.promise().self_scheduler->free()){
             return false;
         }
         h.promise().self_scheduler->task_queue.emplace_back(std::move(h));
         return true;
     }
-    void await_resume() {}
-} this_scheduler;
+    void await_resume() const{}
+};
+inline constexpr this_scheduler_t this_scheduler{this_scheduler_t::_Construct::_Token};
 
 struct get_taskbase_t {
     bool await_ready() { return false; }

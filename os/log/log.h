@@ -1,7 +1,8 @@
 #ifndef LOG_H
 #define LOG_H
 
-extern void printf(char *, ...);
+#include "printf.h"
+
 extern int threadid();
 extern void dummy(int, ...);
 extern void shutdown();
@@ -124,5 +125,5 @@ enum LOG_COLOR {
 			panic("assertion failed: %s\n", str); 		\
 		}												\
 	} while(0)
-	
+
 #endif //! LOG_H

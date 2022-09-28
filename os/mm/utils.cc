@@ -31,3 +31,12 @@ extern "C" void* memset(void* s, int c, std::size_t n) {
     }
     return s;
 }
+
+extern "C" int strlen(const char *s)
+{
+	int n;
+
+	for (n = 0; s[n]; n++)
+		;
+	return n;
+}
