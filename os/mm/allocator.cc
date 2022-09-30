@@ -1,30 +1,51 @@
 #include "allocator.h"
-#include "log/printf.h"
+#include "log/log.h"
 
 #include <map>
 
 // temp heap
 char heap[4096];
-int top = 4096;
+std::size_t top = 4096;
 
 struct mm_block {
     void* ptr = nullptr;
-    int size = 0;
+    std::size_t size = 0;
     bool valid = false;
 };
 
 mm_block blocks[64];
 int block_top = 0;
 
+// TODO: failed when no memory
 void* operator new(std::size_t size) {
+
+    void* ptr = nullptr;
+    for(int i=0;i<block_top;i++){
+        if(blocks[i].valid == false && blocks[i].size == size){
+            blocks[i].valid = true;
+            ptr = blocks[i].ptr;
+            break;
+        }
+    }
+
+    if(!ptr){
+        
+        if (top >= size){
+            top -= size;
+            ptr = &heap[top];
+            blocks[block_top].ptr = ptr;
+            blocks[block_top].size = size;
+            blocks[block_top].valid = true;
+            block_top++;
+        }
+    }
     
-    top -= size;
-    void* ptr = &heap[top];
-    blocks[block_top].ptr = ptr;
-    blocks[block_top].size = size;
-    blocks[block_top].valid = true;
-    block_top++;
-    printf("new %d, ptr: %p\n", size, ptr);
+    
+    if(!ptr){
+        printf("new failed: %d\n",size);
+    }
+    
+    // printf("new size %d, ptr: %p\n", size, ptr);
     return ptr;
 }
 
@@ -37,7 +58,7 @@ void* operator new (std::size_t size, const std::nothrow_t&) noexcept {
 }
 
 void trace_delete(){
-    printf("trace delete\n");
+    // printf("trace delete\n");
 }
 
 
@@ -60,7 +81,7 @@ trace_delete();
         ((char*)ptr)[i] = 0xcd;
     }
 
-    printf("delete: %p\n", ptr);
+    // printf("delete: %p\n", ptr);
     
 }
 

@@ -26,8 +26,9 @@ HEADER_DEP = $(addsuffix .d, $(basename $(CXX_OBJS)))
 
 INCLUDEFLAGS = -I$K
 
-CXXFLAGS = -Wall -Werror -Og -fno-omit-frame-pointer -ggdb 
-CXXFLAGS += -fcoroutines -std=c++20 -fno-exceptions -fno-rtti -g
+CXXFLAGS = -Wall -Werror # lint
+CXXFLAGS += -Og -g -fno-omit-frame-pointer -ggdb # debug
+CXXFLAGS += -foptimize-sibling-calls -fcoroutines -std=c++20 -fno-exceptions -fno-rtti # coroutine
 CXXFLAGS += -MD
 CXXFLAGS += -mcmodel=medany
 CXXFLAGS += -ffreestanding -fno-common -nostdlib -lgcc -mno-relax

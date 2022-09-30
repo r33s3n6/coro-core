@@ -6,7 +6,7 @@
                 "${workspaceFolder}/os"
             ],
             "defines": [],
-            "compilerPath": "/usr/bin/gcc-10",
+            "compilerPath": "${workspaceFolder}/toolchains/bin/riscv64-unknown-elf-g++",
             "cStandard": "c17",
             "cppStandard": "c++20",
             "intelliSenseMode": "linux-gcc-x64"
