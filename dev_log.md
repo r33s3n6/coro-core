@@ -29,7 +29,7 @@
 #### 进展
 
 1. 配置环境，使得C++可以编译出不依赖标准库、异常、RTTI的逻辑程序。
-2. 分别实现了对称协程(symmetric coroutine)和不对称协程(asymmetric coroutine)的调度器。
+2. 实现了不对称协程(asymmetric coroutine)的调度器。
 3. 实现了协程任务的基本框架。
 4. 使用rustsbi和uCore的一些基础库，目前测试程序正确运行在qemu模拟器下。
 
@@ -61,3 +61,4 @@
 #### 进展
 
 1. 正在迁移uCore-SMP的代码
+2. 实现了对称协程(symmetric coroutine)，在开启编译优化尾递归的情况下可以避免调度器的参与。
