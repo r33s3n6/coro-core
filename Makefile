@@ -1,6 +1,10 @@
 .PHONY: clean build user run debug test .FORCE
 all: build
 
+ifndef CPUS
+CPUS := 4
+endif
+
 K = os
 #U = user
 #F = nfs
@@ -28,7 +32,7 @@ INCLUDEFLAGS = -I$K
 
 CXXFLAGS = -Wall -Werror # lint
 CXXFLAGS += -Og -g -fno-omit-frame-pointer -ggdb # debug
-CXXFLAGS += -foptimize-sibling-calls -fcoroutines -std=c++20 -fno-exceptions -fno-rtti # coroutine
+CXXFLAGS += -foptimize-sibling-calls -fcoroutines -std=c++20 -fno-exceptions -fno-rtti -D HANDLE_MEMORY_ALLOC_FAIL# coroutine
 CXXFLAGS += -MD
 CXXFLAGS += -mcmodel=medany
 CXXFLAGS += -ffreestanding -fno-common -nostdlib -lgcc -mno-relax
@@ -93,12 +97,14 @@ clean:
 
 # BOARD
 BOARD		?= qemu
-SBI			?= rustsbi
-BOOTLOADER	:= ./bootloader/rustsbi-qemu.bin
+# SBI			?= rustsbi
+# BOOTLOADER	:= ./bootloader/rustsbi-qemu.bin
+BOOTLOADER	:= ./bootloader/fw_jump.bin
 
 QEMU = qemu-system-riscv64
 QEMUOPTS = \
 	-nographic \
+	-smp $(CPUS) \
 	-machine virt \
 	-bios $(BOOTLOADER) \
 	-kernel build/kernel#	\
@@ -108,3 +114,14 @@ QEMUOPTS = \
 
 run: build/kernel
 	$(QEMU) $(QEMUOPTS)
+
+# QEMU's gdb stub command line changed in 0.11
+QEMUGDB = $(shell if $(QEMU) -help | grep -q '^-gdb'; \
+	then echo "-gdb tcp::15234"; \
+	else echo "-s -p 15234"; fi)
+
+debug: build/kernel .gdbinit
+	# $(CP) $(U)/fs.img $(U)/fs-copy.img
+	$(QEMU) $(QEMUOPTS) -S $(QEMUGDB) &
+	sleep 1
+	$(GDB)

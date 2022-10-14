@@ -89,6 +89,16 @@
         "stop_token": "cpp",
         "thread": "cpp",
         "typeindex": "cpp",
-        "valarray": "cpp"
+        "valarray": "cpp",
+        "*.c": "cpp",
+        "*.h": "cpp",
+        "*.def": "c",
+        "syncstream": "cpp",
+        "stacktrace": "cpp",
+        "barrier": "cpp",
+        "expected": "cpp",
+        "latch": "cpp",
+        "semaphore": "cpp",
+        "spanstream": "cpp"
     }
 }

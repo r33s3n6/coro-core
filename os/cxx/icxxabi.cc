@@ -2,7 +2,7 @@
 #include "icxxabi.h"
 #include <bits/c++config.h>
 
-#include "log/printf.h"
+#include <utils/printf.h>
 
 void __cxa_pure_virtual() {
     // Do Nothing
@@ -69,7 +69,7 @@ void call_kernel_start(){
 
 
     int ret = kernel_start();
-    printf("kernel_start returned %d\n", ret);
+    __printf("kernel_start returned %d\n", ret);
 
     count = __fini_array_end - __fini_array_start;
     for (i = 0; i < count; i++)

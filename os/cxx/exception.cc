@@ -1,4 +1,4 @@
-#include "log/log.h"
+#include <utils/panic.h>
 
 namespace std{
 
@@ -81,11 +81,11 @@ namespace std{
 }
 
 //TODO
-int threadid(){
-    return 0;
-}
-
-int cpuid()
-{
-	return 0;
-}
+//int threadid(){
+//    return 0;
+//}
+//
+//int cpuid()
+//{
+//	return 0;
+//}

@@ -5,9 +5,12 @@
 #include <optional>
 #include <queue>
 
-#include "log/log.h"
-#include "mm/allocator.h"
-#include "types.h"
+#include <mm/allocator.h>
+#include <ccore/types.h>
+
+#include <utils/printf.h>
+#include <utils/panic.h>
+#include <utils/utility.h>
 
 struct scheduler;
 
@@ -19,7 +22,7 @@ struct optional_storage<void> {
     bool has_value = false;
     operator bool() const { return has_value; }
     void set_value(){
-        has_value= true;
+        has_value = true;
     }
 };
 
@@ -63,72 +66,57 @@ struct task_fail_t {
 };
 inline constexpr task_fail_t task_fail{task_fail_t::_Construct::_Token};
 
-
 struct promise_base;
 
-// task_base is a reference to a coroutine, it will not destruct the coroutine
-struct task_base {
+// task destruct the promise if it is the owner
+// task_base will never destruct promise
+// destruct function is defined in the derived class
+struct task_base : noncopyable {
     using promise_type = promise_base;
     // take the ownership of the coroutine
-    task_base(task_base&& t)
-        : _promise(t._promise), _owner(t._owner), alloc_fail(t.alloc_fail) {
-        t._promise = nullptr;
-        t._owner = false;
-    }
-    task_base& operator=(task_base&& t) {
-        this->_owner = t._owner;
-        this->_promise = t._promise;
-        t._promise = nullptr;
-        t._owner = false;
-        return *this;
-    }
-    // no copy
-    task_base(const task_base& t) = delete;
+    task_base(task_base&& t);
+    task_base& operator=(task_base&& t);
+
     // for alloc failed
     task_base(const task_fail_t&)
-        : _promise(nullptr), _owner(false), alloc_fail(true) {}
+        : _promise(nullptr), alloc_fail(true) {}
+    
     // for container
-    task_base() : _promise(nullptr), _owner(false), alloc_fail(false) {}
-    // for scheduler and derived class, only there owner can be set to true
-    task_base(promise_type* p, bool owner = false)
-        : _promise(p), _owner(owner), alloc_fail(false) {}
+    task_base() : _promise(nullptr), alloc_fail(false) {}
+
+    // for scheduler and derived class
+    task_base(promise_type* p, bool owner = false);
 
     // for await_suspend
     template <typename T>
     task_base(std::coroutine_handle<T> h) noexcept
-        : _promise(&h.promise()), _owner(false), alloc_fail(false) {
+        : _promise(&h.promise()), alloc_fail(false) {
         static_assert(std::is_base_of_v<promise_type, T>);
     }
+
+
+    ~task_base() {};
 
     explicit operator bool() const { return _promise != nullptr; }
 
     std::coroutine_handle<promise_type> get_handle() noexcept {
         return std::coroutine_handle<promise_type>::from_promise(*_promise);
     }
+
     promise_type* get_promise() noexcept { return _promise; }
+
     void resume() { get_handle().resume(); }
 
     task_base get_ref() {
         return {_promise, false};
     }
 
-    void clear_owner(){
-        _owner = false;
-    }
-    bool is_owner() const { return _owner; }
-
    protected:
     promise_type* _promise;
-    bool _owner;
     bool alloc_fail;
-    
-
-   // private:
+    bool _owner = false;
     
 };
-
-template <typename return_type = void>
-struct task;
 
 struct promise_base {
 
@@ -138,13 +126,27 @@ struct promise_base {
 
     // where we schedule ourselves to
     scheduler* self_scheduler = nullptr;
+
+    // if our caller can handle error, if so,
+    // when we or our callee fail, we resume our caller
     bool has_error_handler = false;
+    
+    // do not pass control to scheduler
+    bool no_yield = false;
+
+    // track the ownership of the coroutine
+    // task_base* owned_by = nullptr;
+
     status get_status() const { return _status; }
+    void set_fail() { _status = fail; }
 
    protected:
     status _status = suspend;
-    //bool has_value = false;
 };
+
+template <typename return_type = void>
+struct task;
+
 
 template <typename return_type = void>
 struct promise : public promise_base {
@@ -153,35 +155,40 @@ struct promise : public promise_base {
     promise() {}
     ~promise() { 
         // printf("promise %p: destruct\n", this);
-         }
+    }
 
+    // awaiter that we yield some value and pass control to our caller
     struct yield_awaiter {
         bool await_ready() noexcept { return false; }
-        std::coroutine_handle<> await_suspend(task_base t) noexcept {
-            // The coroutine is now suspended at the final-suspend point.
-            // Lookup its continuation in the promise and resume it.
-            promise_base* p = t.get_promise();
 
-            // TODO: task should hide promise
+
+        // The coroutine is now suspended at a suspend point.
+        // t is original coroutine, waiting for us to yield value
+        // and continue the caller
+        std::coroutine_handle<> await_suspend(task_base t) noexcept {
+            promise_base* p = t.get_promise();
 
             // we fail
             if(p->get_status() == fail){
                 // fast error handling
                 task_base curr = t.get_ref();
-                // if curr has error handler(its caller), and it has caller,
-                // we set it to fail(no need, no value means fail) and resume its caller,
-                // if finally we don't have error handler, we destroy the 
-                // top coroutine directly and give control back to 
-                // scheduler by return std::noop_coroutine
+                // if curr has error handler(its caller), we resume its caller
+                // otherwise, we set curr = curr.caller and continue this process
+                // eventually we would encounter task whose caller is task_executor,
+                // which has no caller and set the task's have_error_handler to true
+                // so we will resume the task_executor. if not so, we panic
+
                 while (true) {
                     promise_base* curr_promise = curr.get_promise();
                     if (!curr_promise->caller){
                         // top
-                        curr.get_handle().destroy();
-                        return std::noop_coroutine();
+                        panic("no error handler found");
                     }
                     else if (curr_promise->has_error_handler){
-                        // curr_promise->_status=fail;
+                        // we set status of current task to fail,
+                        // and resume its caller, so the caller would
+                        // handle error properly
+                        curr_promise->set_fail();
                         return curr_promise->caller.get_handle();
                     }
                     curr = curr_promise->caller.get_ref();
@@ -189,18 +196,17 @@ struct promise : public promise_base {
 
             }
             
-
+            // if we have caller, we resume our caller, 
+            // our caller will destory us after consume value
             if (p->caller)
                 return p->caller.get_handle();
             else {
-                
-                if(p->get_status() != suspend ){
-                    // we are done and we are the top, no one holds
-                    // task that owns us(TODO: generator may not)
-                    // destroy self and go back to scheduler
+                if( p->get_status() != suspend){
+                    // we are done and we have no caller, so we
+                    // destroy ourself and go back to scheduler
                     t.get_handle().destroy();
                 }
-                
+                // back to scheduler
                 return std::noop_coroutine();
             }
                 
@@ -215,10 +221,14 @@ struct promise : public promise_base {
     // task<return_type> get_return_object() { return {this}; }
 
     promise* get_return_object() { return this; }
+
+
+#ifdef HANDLE_MEMORY_ALLOC_FAIL
     static task_fail_t get_return_object_on_allocation_failure() {
-        errorf("alloc task failed\n");
+        __printf("alloc task failed\n");
         return task_fail;
     }
+#endif
 
     template <std::convertible_to<return_type> from_t, typename T = return_type>
     void return_value(from_t&& from,
@@ -243,7 +253,7 @@ struct promise : public promise_base {
     //}
 
     void return_value(const task_fail_t& t) {
-        printf("task %p return fail\n", this);
+        // printf("task %p return fail\n", this);
         result.has_value = false;
         _status = fail;
     }
@@ -283,6 +293,13 @@ struct task : task_base {
     // construct from co_return, we have the ownership of the coroutine
     task(promise_type* p) noexcept : task_base(p, true) {}
 
+    task(task&& t) noexcept : task_base(std::move(t)) {}
+    task& operator=(task&& t) noexcept {
+        task_base::operator=(std::move(t));
+        return *this;
+    }
+
+
    public:
     // task get_ref() {
     //     return {_promise};
@@ -300,9 +317,8 @@ struct task : task_base {
     }
 
     ~task() {
-        if (this->is_owner()) {
+        if (this->_owner) {
             // we are done, destroy the coroutine
-            // note that task base would not destroy the coroutine
             get_handle().destroy();
         }
     }
@@ -312,10 +328,17 @@ struct task : task_base {
         bool await_ready() { return this->alloc_fail; }
 
         std::coroutine_handle<> await_suspend(task_base caller) {
+            promise_base* caller_promise = caller.get_promise();
             if (!p->self_scheduler) {
-                p->self_scheduler = caller.get_promise()->self_scheduler;
+                p->self_scheduler = caller_promise->self_scheduler;
             }
 
+            // if we are not set to no_yield, we take same settings as caller
+            if(!p->no_yield) {
+                p->no_yield = caller_promise->no_yield;
+            }
+
+            // we don't have the ownership of the caller
             p->caller = std::move(caller);
 
             // resume ourselves, by tail call optimization, we will not create a new
@@ -326,6 +349,10 @@ struct task : task_base {
         opt_type await_resume() {
             // alloc_failed_task_shortcut
             if (alloc_fail) {
+                return {};
+            }
+
+            if (p->get_status() == promise_base::fail) {
                 return {};
             }
 
@@ -355,98 +382,32 @@ struct task : task_base {
     //    return std::move(this->_promise->result);
     //}
 };
-/*
-// for generator
-template <typename return_type>
-struct gen_task : task_base {
-    using promise_type = promise<return_type>;
-    using handle_type = std::coroutine_handle<promise_type>;
-    using opt_type = optional_storage<return_type>;
 
-    gen_task(const task_fail_t& t) : task_base(t) {}
-    gen_task(const gen_task& gt): task_base(gt._promise,false){}
-    gen_task() : task_base() {}
-
-    // construct from co_return, we have the ownership of the coroutine
-    gen_task(promise_type* p) noexcept : task_base(p, true) {}
-
-   public:
-
-    handle_type get_handle() noexcept {
-        return handle_type::from_promise(*(promise_type*)_promise);
-    }
-
-    promise_type* get_promise() noexcept {
-        return (promise_type*)_promise;
-    }
-
-    static handle_type get_handle(promise_base* p) noexcept {
-        return handle_type::from_promise(*(promise_type*)p);
-    }
-
-    ~gen_task() {
-       printf("gentask destruct\n");
-    }
-
-    bool await_ready() { return false; }
-
-    bool await_suspend(task_base caller) {
-        printf("gen_task:await_suspend\n");
-        get_handle().resume();
-        printf("gen_task:await_suspend: resume end\n");
-        
-        return false;
-    }
-    // retrieve result generated by co_yield/co_return from promise
-    opt_type await_resume() {
-        if(!get_promise()->result){
-            printf("shit\n");
-        }
-        return std::move(get_promise()->result);
-    }
-
-    
-
-
-};*/
+task<void> __task_executor(promise<void>* p);
 
 // TODO fix ownership problem
 struct scheduler {
     std::deque<task_base> task_queue;
 
-    // TODO: may schedule to different scheduler
-    //struct next_schedule_t {
-    //    scheduler* s;
-    //    bool await_ready() { return s->task_queue.empty(); }
-    //
-    //    bool await_suspend(task_base h) {
-    //        printf("next_schedule: queue task %p\n", h.address());
-    //        s->task_queue.emplace_back(std::move(h));
-    //
-    //        return true;  // go to scheduler
-    //    }
-    //    void await_resume() {}
-    //} next_schedule;
-
-    // scheduler() : next_schedule{this} {}
-
-    // void schedule_immediately(task_base h) {
-    //     task_queue.emplace_front(std::move(h));
-    // }
-    // template <typename T>
     void schedule(task_base&& h) {
         // let them clear themselves on final_suspend
         if(!h){
-            printf("scheduler: empty task\n");
+            // printf("scheduler: empty task\n");
             return;
         }
 
+        task_base tb;
+
+        // scheduler takes ownership of the coroutine whose caller is empty
         if(!h.get_promise()->caller){
-            h.clear_owner();
+            // we wrap the task with a task_executor
+            tb = __task_executor((promise<void>*)h.get_promise());
+        }else{
+            tb = std::move(h);
         }
        
-        h.get_promise()->self_scheduler = this;
-        task_queue.emplace_back(std::move(h));
+        tb.get_promise()->self_scheduler = this;
+        task_queue.emplace_back(std::move(tb));
     }
 
     bool free() { return task_queue.empty(); }
@@ -459,8 +420,9 @@ struct scheduler {
             // all tasks we own, we start it here
             task_base t = std::move(task_queue.front());
             task_queue.pop_front();
+
             printf("scheduler: try to switch to %p\n", t.get_promise());
-            printf("scheduler: task status: %d\n", t.get_promise()->get_status());
+            // printf("scheduler: task status: %d\n", t.get_promise()->get_status());
 
             t.resume();
             // we do not track the status of tasks
@@ -472,12 +434,21 @@ struct scheduler {
 struct this_scheduler_t {
     enum class _Construct { _Token };
     explicit constexpr this_scheduler_t(_Construct) {}
-    bool await_ready() const { return false; }
+    bool await_ready() const { 
+        return false; 
+    }
     std::coroutine_handle<> await_suspend(task_base h) const {
-        scheduler* s = h.get_promise()->self_scheduler;
-        if (s->free()) {
+        promise_base* p = h.get_promise();
+        if(p->no_yield) {
             return h.get_handle(); // resume immediately
         }
+
+        scheduler* s = p->self_scheduler;
+
+        if (!s || s->free()) {
+            return h.get_handle(); // resume immediately
+        }
+
         s->schedule(std::move(h));
 
         // switch back to scheduler

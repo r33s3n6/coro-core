@@ -1,11 +1,14 @@
+#include <utils/printf.h>
+#include <utils/panic.h>
+
 #include "allocator.h"
-#include "log/log.h"
+
 
 #include <map>
 
 // temp heap
-char heap[4096];
-std::size_t top = 4096;
+char heap[40960];
+std::size_t top = 40960;
 
 struct mm_block {
     void* ptr = nullptr;
@@ -13,7 +16,7 @@ struct mm_block {
     bool valid = false;
 };
 
-mm_block blocks[64];
+mm_block blocks[256];
 int block_top = 0;
 
 // TODO: failed when no memory
@@ -42,7 +45,8 @@ void* operator new(std::size_t size) {
     
     
     if(!ptr){
-        printf("new failed: %d\n",size);
+        __printf("new failed: %d\n",size);
+        panic("new failed");
     }
     
     // printf("new size %d, ptr: %p\n", size, ptr);
@@ -73,7 +77,7 @@ trace_delete();
         }
     }
     if (size == 0) {
-        printf("delete error, ptr: %p\n", ptr);
+        __printf("delete error, ptr: %p\n", ptr);
         return;
     }
 

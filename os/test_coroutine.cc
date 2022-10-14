@@ -1,9 +1,11 @@
-#include "mm/utils.h"
-#include "coroutine.h"
-#include "log/log.h"
-#include "rustsbi/timer.h"
-
 #include <string>
+
+#include <utils/assert.h>
+#include <utils/log.h>
+#include <arch/timer.h>
+#include <mm/utils.h>
+
+#include "coroutine.h"
 
 
 
@@ -11,7 +13,7 @@
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wreturn-local-addr"
 void* get_stack_pointer() {
-  void* p = NULL;
+  void* p = nullptr;
   return (void*)&p;
   // printf("===============stack: %p", (void*)&p);
 }
@@ -34,20 +36,20 @@ task<int> test_walker(int lo, int hi) {
 }
 
 task<int> test_coroutine4_1(int* i) noexcept {
-    printf("test_coroutine4.1: start\n"); 
+    infof("test_coroutine4.1: start\n"); 
     auto walker = test_walker(2, 5);
-    printf("test_coroutine4.1: create test_walker:%p\n", walker.get_promise()); 
+    infof("test_coroutine4.1: create test_walker:%p\n", walker.get_promise()); 
 
     int found = 0;
     while (true) {
         std::optional<int> value = co_await walker;
 
         if (*value == 0) {
-            printf("test_coroutine4.1: walker done\n");
+            infof("test_coroutine4.1: walker done\n");
             break;
         }
         found+=*value;
-        printf("test_coroutine4.1: walker value:%d\n",*value);
+        infof("test_coroutine4.1: walker value:%d\n",*value);
 
         // value = walker.promise().result;
 
@@ -61,15 +63,15 @@ task<int> test_coroutine4_1(int* i) noexcept {
 }
 
 task<int> test_coroutine4(int* i) noexcept {
-    printf("test_coroutine4: start\n"); 
+    infof("test_coroutine4: start\n"); 
     auto t = test_coroutine4_1(i);
-    printf("test_coroutine4: create test_coroutine4.1:%p\n", t.get_promise()); 
+    infof("test_coroutine4: create test_coroutine4.1:%p\n", t.get_promise()); 
 
     std::optional<int> value = co_await t;
 
-    printf("test_coroutine4: t_promise_result:%d, has_value?:%d\n",*value, value.has_value());
+    infof("test_coroutine4: t_promise_result:%d, has_value?:%d\n",*value, value.has_value());
 
-    assert(*value == 35, "test_coroutine4: value should be 35");
+    KERNEL_ASSERT(*value == 35, "test_coroutine4: value should be 35");
 
     *i+=*value;
     co_return *i;
@@ -77,7 +79,7 @@ task<int> test_coroutine4(int* i) noexcept {
 
 
 task<int> test_coroutine3(int* x) noexcept {
-    printf("test_coroutine3: start\n"); 
+    infof("test_coroutine3: start\n"); 
 
     //auto self = co_await get_taskbase_t{};
     
@@ -90,18 +92,18 @@ task<int> test_coroutine3(int* x) noexcept {
         (*x)++;
     }
 
-    printf("test_coroutine3: end\n"); 
+    infof("test_coroutine3: end\n"); 
     co_return task_fail;
 
     // co_return *x;
 }
 
 task<double> test_coroutine2(int* i) {
-    printf("test_coroutine2: start\n");
+    infof("test_coroutine2: start\n");
     auto t= test_coroutine3(i);
-    printf("test_coroutine2: test_coroutine3 address: %p\n",t.get_promise());
+    infof("test_coroutine2: test_coroutine3 address: %p\n",t.get_promise());
     std::optional<int> x = co_await t;
-    printf("test_coroutine2: after test_coroutine3: x.has_value() = %d\n", x.has_value());
+    infof("test_coroutine2: after test_coroutine3: x.has_value() = %d\n", x.has_value());
 
     
     ++(*i);
@@ -109,28 +111,31 @@ task<double> test_coroutine2(int* i) {
 }
 
 task<void> test_coroutine1(int* i) {
-    printf("test_coroutine1: start\n");
+    infof("test_coroutine1: start\n");
     task<double> t= test_coroutine2(i);
-    printf("test_coroutine1: test_coroutine2 address: %p\n",t.get_promise());
+    infof("test_coroutine1: test_coroutine2 address: %p\n",t.get_promise());
     std::optional<double> x = co_await t;
-    printf("test_coroutine1: after test_coroutine2: x.has_value() = %d\n", x.has_value());
+    infof("test_coroutine1: after test_coroutine2: x.has_value() = %d\n", x.has_value());
     
     ++(*i);
     co_return task_ok;
 }
 
 task<void> test_coroutine(int* i) {
-    printf("test_coroutine: start\n");
+    uint64 a = -1;
+    co_await kernel_logger.printf("test logger: %d %p %x %s %%\n",a,&a,a,"test");
+
+    infof("test_coroutine: start\n");
     bool x;
     {
         task<void> t= test_coroutine1(i);
         t.get_promise()->has_error_handler = true;
-        printf("test_coroutine: test_coroutine1 address: %p\n",t.get_promise());
+        infof("test_coroutine: test_coroutine1 address: %p\n",t.get_promise());
         x = co_await t;
-        printf("test_coroutine: after test_coroutine1, failed?:%d\n", !x);
+        infof("test_coroutine: after test_coroutine1, failed?:%d\n", !x);
     }
     //t.destroy();
-    assert(*i==3, "test_coroutine: i should be 10");
+    KERNEL_ASSERT(*i==3, "test_coroutine: i should be 10");
     ++(*i);
     if (!x) {
         co_return task_fail;
@@ -145,13 +150,13 @@ task<std::string> test_coro_string(const std::string& x){
 }
 
 task<void> test_coroutine_string() {
-    printf("test_coroutine_string: start\n");
+    infof("test_coroutine_string: start\n");
     std::optional<std::string> ret = co_await test_coro_string("this is async task");
     if(ret){
-        printf("test_coroutine_string: %s\n", ret->c_str());
+        infof("test_coroutine_string: %s\n", ret->c_str());
         co_return task_ok;
     } else {
-        printf("test_coroutine_string: failed\n");
+        infof("test_coroutine_string: failed\n");
         co_return task_fail;
     }
 
@@ -169,7 +174,7 @@ task<void> test_stack_overflow(int x){
         co_await test_stack_overflow_generator(i);
     }
     void* ptr2 = get_stack_pointer();
-    assert(ptr1==ptr2, "stack check failed(tail call)");
+    KERNEL_ASSERT(ptr1==ptr2, "stack check failed(tail call)");
     co_return task_ok;
 }
 
@@ -188,7 +193,7 @@ task<void> test_stack_overflow2(int x){
     }
 
     void* ptr2 = get_stack_pointer();
-    assert(ptr1==ptr2, "stack check failed(tail call)");
+    KERNEL_ASSERT(ptr1==ptr2, "stack check failed(tail call)");
     co_return task_ok;
 }
 
@@ -202,7 +207,7 @@ task<void> test_no_return_coro(int* d){
 task<void> test_no_return(){
     int d=0;
     bool ok = co_await test_no_return_coro(&d);
-    printf("test_no_return: %d",ok);
+    infof("test_no_return: %d",ok);
     
 }
 
@@ -212,6 +217,8 @@ struct global_test_t {
         i = 0xf;
     }
 } global_test;
+
+
 
 struct normal_generator{
     int x1=1;
@@ -248,11 +255,11 @@ void test_normal_generator(int times){
     for(int i=0;i<times;i++){
         x = ng.gen();
         if(*x==10){
-            printf("don't optimize");
+            __printf("don't optimize");
         }
     }
     end_time = get_time_us();
-    printf("test_normal_generator: elapsed time: %dus\n", (int)(end_time-start_time));
+    __printf("test_normal_generator: elapsed time: %dus\n", (int)(end_time-start_time));
 
 
 }
@@ -269,11 +276,11 @@ task<void> test_coro_generator(int times){
         x = co_await gen;
         // printf("has?:%d",x.has_value());
         if(*x==10){
-            printf("don't optimize");
+            infof("don't optimize");
         }
     }
     end_time = get_time_us();
-    printf("test_coro_generator: elapsed time: %dus\n", (int)(end_time-start_time));
+    infof("test_coro_generator: elapsed time: %dus\n", (int)(end_time-start_time));
     co_return task_ok;
 }
 
@@ -282,7 +289,7 @@ task<void> test_coro_generator(int times){
 extern scheduler kernel_scheduler;
 int kernel_coroutine_test() {
     // assert(false,"assert test");
-    assert(global_test.i == 0xf, "global_test.i should be 0xf");
+    KERNEL_ASSERT(global_test.i == 0xf, "global_test.i should be 0xf");
     int test;
     test = 0;
 
@@ -317,10 +324,14 @@ int kernel_coroutine_test() {
     kernel_scheduler.schedule(std::move(h4));
     kernel_scheduler.schedule(std::move(h5));
 
+
     test_normal_generator(1000000);
+
+    printf("main: test scheduler start\n");
     kernel_scheduler.start();
+
     printf("main: test: %d\n", test);
-    assert(test==39, "test should be 3+1+35");
+    KERNEL_ASSERT(test==39, "test should be 3+1+35");
     return test;
 }
 

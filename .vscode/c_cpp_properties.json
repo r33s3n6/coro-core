@@ -3,7 +3,9 @@
         {
             "name": "Linux",
             "includePath": [
-                "${workspaceFolder}/os"
+                "${workspaceFolder}/os",
+                "${workspaceFolder}/toolchains/riscv64-unknown-elf/include/c++/12.1.0"
+                
             ],
             "defines": [],
             "compilerPath": "${workspaceFolder}/toolchains/bin/riscv64-unknown-elf-g++",
