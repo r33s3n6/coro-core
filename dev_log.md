@@ -62,3 +62,71 @@
 
 1. 正在迁移uCore-SMP的代码
 2. 实现了对称协程(symmetric coroutine)，在开启编译优化尾递归的情况下可以避免调度器的参与。
+
+
+### 第五周(10.10-10.16)
+
+#### 进展
+
+1. 修复了调度器内存泄漏的问题
+2. 慢慢用C++的风格重写uCore-SMP的一些底层部分，比如spinlock, cpu等等
+3. 实现了一个异步logger
+
+#### 问题
+
+1. 编译器的`Internal Compiler Error`
+
+```
+during GIMPLE pass: lower
+os/utils/fprintf.cc: In function 'void __fprintf(__fprintf(file*, const char*)::_Z9__fprintfP4filePKc.Frame*)':
+os/utils/fprintf.cc:4:12: internal compiler error: in lower_stmt, at gimple-low.cc:410
+    4 | task<void> __fprintf(file* f, const char* fmt) {
+      |            ^~~~~~~~~
+0x611581 lower_stmt
+        /tmp/rv_gcc/riscv-gnu-toolchain/gcc/gcc/gimple-low.cc:410
+0x611581 lower_sequence
+        /tmp/rv_gcc/riscv-gnu-toolchain/gcc/gcc/gimple-low.cc:217
+0x13a6e8c lower_stmt
+        /tmp/rv_gcc/riscv-gnu-toolchain/gcc/gcc/gimple-low.cc:286
+0x13a6e8c lower_sequence
+        /tmp/rv_gcc/riscv-gnu-toolchain/gcc/gcc/gimple-low.cc:217
+0x13a6c68 lower_gimple_bind
+        /tmp/rv_gcc/riscv-gnu-toolchain/gcc/gcc/gimple-low.cc:475
+0x13a6eec lower_stmt
+        /tmp/rv_gcc/riscv-gnu-toolchain/gcc/gcc/gimple-low.cc:255
+0x13a6eec lower_sequence
+        /tmp/rv_gcc/riscv-gnu-toolchain/gcc/gcc/gimple-low.cc:217
+0x13a6c68 lower_gimple_bind
+        /tmp/rv_gcc/riscv-gnu-toolchain/gcc/gcc/gimple-low.cc:475
+0x13a6eec lower_stmt
+        /tmp/rv_gcc/riscv-gnu-toolchain/gcc/gcc/gimple-low.cc:255
+0x13a6eec lower_sequence
+        /tmp/rv_gcc/riscv-gnu-toolchain/gcc/gcc/gimple-low.cc:217
+0x13a6e8c lower_stmt
+        /tmp/rv_gcc/riscv-gnu-toolchain/gcc/gcc/gimple-low.cc:286
+0x13a6e8c lower_sequence
+        /tmp/rv_gcc/riscv-gnu-toolchain/gcc/gcc/gimple-low.cc:217
+0x13a6c68 lower_gimple_bind
+        /tmp/rv_gcc/riscv-gnu-toolchain/gcc/gcc/gimple-low.cc:475
+0x13a79b8 lower_function_body
+        /tmp/rv_gcc/riscv-gnu-toolchain/gcc/gcc/gimple-low.cc:110
+0x13a79b8 execute
+        /tmp/rv_gcc/riscv-gnu-toolchain/gcc/gcc/gimple-low.cc:195
+Please submit a full bug report, with preprocessed source (by using -freport-bug).
+Please include the complete backtrace with any bug report.
+See <https://gcc.gnu.org/bugs/> for instructions.
+make: *** [Makefile:77: build/os/utils/fprintf.o] Error 1
+```
+
+
+
+#### 解决问题
+
+1. 上面的ICE似乎是因为某个类里有一个析构函数，删了就好了。
+2. 内存泄漏是因为协程task的所有权问题（可能属于调度器，或因为它是最上层task而没有人拥有它，需要自己执行完后自己释放自己。）情况比较复杂，最后直接在所有的协程入口包了一层。
+
+
+
+#### 疑问
+
+1. riscv有一个`mcpuid`，但似乎supervisor层的实现都是在初始化时由m层来提供`hartid`使,`tp`存储`hartid`，sbi没有提供对应接口来访问`mcpuid`
