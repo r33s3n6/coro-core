@@ -2,7 +2,7 @@
 #include "icxxabi.h"
 #include <bits/c++config.h>
 
-#include <utils/printf.h>
+// #include <utils/printf.h>
 
 void __cxa_pure_virtual() {
     // Do Nothing
@@ -51,10 +51,10 @@ extern void (*__fini_array_start []) (void) __attribute__((weak));
 extern void (*__fini_array_end []) (void) __attribute__((weak));
 
 
-int kernel_start();
+extern int kernel_start();
 
 
-void call_kernel_start(){
+int call_kernel_start() {
 
     std::size_t count;
     std::size_t i;
@@ -67,9 +67,7 @@ void call_kernel_start(){
     for (i = 0; i < count; i++)
         __init_array_start[i] ();
 
-
     int ret = kernel_start();
-    __printf("kernel_start returned %d\n", ret);
 
     count = __fini_array_end - __fini_array_start;
     for (i = 0; i < count; i++)
@@ -77,5 +75,6 @@ void call_kernel_start(){
 
     __cxa_finalize(0);
     
+    return ret;
 
 }

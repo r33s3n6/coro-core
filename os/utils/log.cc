@@ -5,7 +5,8 @@ using logger::log_color::CYAN;
 using logger::log_color::GREEN;
 using logger::log_color::PURPLE;
 
-logger kernel_logger;
+file_logger kernel_logger;
+console_logger kernel_console_logger;
 
 logger::log_color debug_core_color[] = {
     BROWN, PURPLE, CYAN,  GREEN,  BROWN, PURPLE, CYAN,  GREEN,  BROWN, PURPLE,
@@ -13,17 +14,17 @@ logger::log_color debug_core_color[] = {
 };
 
 
-logger::logger() {
+file_logger::file_logger() : logger() {
     for (int i = 0; i < NCPU; i++) {
         for (int j = 0; j < MAX_TRACE_CNT; j++) {
             trace_pool[i][j] = -1;
         }
         trace_last[i] = 0;
     }
-}
+} 
 
 
-void logger::push_trace(uint64 id) {
+void file_logger::push_trace(uint64 id) {
     lock_guard<spinlock> guard(trace_lock);
 
     uint64 cpu_id = cpu::current_id();
@@ -33,13 +34,13 @@ void logger::push_trace(uint64 id) {
     trace_pool[cpu_id][trace_last[cpu_id]] = id;
 }
 
-int64 logger::get_last_trace() {
+int64 file_logger::get_last_trace() {
     lock_guard<spinlock> guard(trace_lock);
     uint64 cpu_id = cpu::current_id();
     return trace_pool[cpu_id][trace_last[cpu_id]];
 }
 
-task<void> logger::print_trace() {
+task<void> file_logger::print_trace() {
     lock_guard<spinlock> guard(trace_lock);
 
     uint64 cpu_id = cpu::current_id();

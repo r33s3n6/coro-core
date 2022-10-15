@@ -39,9 +39,13 @@ task<void> __fprintf(file* f, const char* fmt, format_type x, Args ... args) {
             continue;
         }
 
+        // get the format specifier
         c = fmt[i++] & 0xff;
         
-        co_await f->write(fmt, i - 2);
+        
+        if (i>2) {
+            co_await f->write(fmt, i - 2);
+        }
 
         switch (c) {
             case 'd':

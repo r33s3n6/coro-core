@@ -16,4 +16,6 @@ void operator delete(void* ptr, std::size_t size);
 
 void operator delete[](void* ptr);
 
+void check_memory(); // debug
+
 #endif // MM_ALLOCATOR_H

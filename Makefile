@@ -33,10 +33,12 @@ INCLUDEFLAGS = -I$K
 CXXFLAGS = -Wall -Werror # lint
 CXXFLAGS += -Og -g -fno-omit-frame-pointer -ggdb # debug
 CXXFLAGS += -foptimize-sibling-calls -fcoroutines -std=c++20 -fno-exceptions -fno-rtti -D HANDLE_MEMORY_ALLOC_FAIL# coroutine
+CXXFLAGS += -D NCPU=$(CPUS) # cpu
 CXXFLAGS += -MD
 CXXFLAGS += -mcmodel=medany
 CXXFLAGS += -ffreestanding -fno-common -nostdlib -lgcc -mno-relax
 CXXFLAGS += -Wno-error=write-strings -Wno-write-strings
+#CXXFLAGS += -freport-bug
 CXXFLAGS += $(INCLUDEFLAGS)
 CXXFLAGS += $(shell $(CXX) -fno-stack-protector -E -x c /dev/null >/dev/null 2>&1 && echo -fno-stack-protector)
 
@@ -67,15 +69,17 @@ endif
 
 LDFLAGS= -z max-page-size=4096
 
-$(AS_OBJS): $(BUILDDIR)/$K/%.o : $K/%.S
+-include $(HEADER_DEP)
+
+$(AS_OBJS): $(BUILDDIR)/$K/%.o : $K/%.S Makefile
 	@mkdir -p $(@D)
 	$(AS) $(CFLAGS) -c $< -o $@
 
-$(CXX_OBJS): $(BUILDDIR)/$K/%.o : $K/%.cc  $(BUILDDIR)/$K/%.d
+$(CXX_OBJS): $(BUILDDIR)/$K/%.o : $K/%.cc  $(BUILDDIR)/$K/%.d Makefile
 	@mkdir -p $(@D)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-$(HEADER_DEP): $(BUILDDIR)/$K/%.d : $K/%.cc
+$(HEADER_DEP): $(BUILDDIR)/$K/%.d : $K/%.cc Makefile
 	@mkdir -p $(@D)
 	@set -e; rm -f $@; $(CC) -MM $< $(INCLUDEFLAGS) > $@.$$$$; \
         sed 's,\($*\)\.o[ :]*,\1.o $@ : ,g' < $@.$$$$ > $@; \

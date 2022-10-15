@@ -60,11 +60,13 @@ class cpu {
     uint64 start_cycle;
 
     public:
-    cpu(){}
+    cpu(){
+    }
     // cpu(int core_id) : core_id(core_id), start_cycle(r_time()) {}
     void init(int core_id) {
         this->core_id = core_id;
         this->start_cycle = r_time();
+        __print();
     }
    public:
     //
@@ -100,26 +102,9 @@ class cpu {
     // push_off/pop_off are like intr_off()/intr_on() except that they are matched:
     // it takes two pop_off()s to undo two push_off()s.  Also, if interrupts
     // are initially off, then push_off, pop_off leaves them off.
-    void pop_off(){
-        if (intr_get())
-            panic("pop_off - interruptible");
-        if (noff < 1)
-            panic("pop_off");
-        noff -= 1;
-        if (noff == 0 && base_interrupt_status) {
-            intr_on();
-        }
-    }
+    void pop_off();
 
-    void push_off(){
-        int old = intr_get();
-
-        intr_off();
-        if (noff == 0) {
-            base_interrupt_status = old;
-        }
-        noff += 1;
-    }
+    void push_off();
 
     int get_core_id() {
         return core_id;
@@ -158,6 +143,7 @@ class cpu {
         }
     }
 
+    void __print();
     task<void> print();
 
     private:

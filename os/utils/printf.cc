@@ -1,5 +1,7 @@
 #include <ccore/types.h>
 #include <sbi/sbi.h>
+#include <atomic/spinlock.h>
+
 #include "panic.h"
 
 #include <stdarg.h>
@@ -62,7 +64,7 @@ printptr(uint64 x) {
 }
 
 // Print to the console. only understands %d, %x, %p, %s.
-void __vprintf(const char *__restrict fmt, va_list ap) {
+int __vprintf(const char *__restrict fmt, va_list ap) {
     int i, c;
     char *s;
 
@@ -103,11 +105,11 @@ void __vprintf(const char *__restrict fmt, va_list ap) {
                 break;
         }
     }
-
+    return 0;
 }
 
 // Print to the console. only understands %d, %x, %p, %s.
-extern "C" int __printf(const char *__restrict fmt, ...) {
+int __printf(const char *__restrict fmt, ...) {
     va_list ap;
 
     va_start(ap, fmt);

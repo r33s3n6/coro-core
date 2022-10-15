@@ -36,20 +36,20 @@ task<int> test_walker(int lo, int hi) {
 }
 
 task<int> test_coroutine4_1(int* i) noexcept {
-    infof("test_coroutine4.1: start\n"); 
+    co_infof("test_coroutine4.1: start"); 
     auto walker = test_walker(2, 5);
-    infof("test_coroutine4.1: create test_walker:%p\n", walker.get_promise()); 
+    co_infof("test_coroutine4.1: create test_walker:%p", walker.get_promise()); 
 
     int found = 0;
     while (true) {
         std::optional<int> value = co_await walker;
 
         if (*value == 0) {
-            infof("test_coroutine4.1: walker done\n");
+            co_infof("test_coroutine4.1: walker done");
             break;
         }
         found+=*value;
-        infof("test_coroutine4.1: walker value:%d\n",*value);
+        co_infof("test_coroutine4.1: walker value:%d",*value);
 
         // value = walker.promise().result;
 
@@ -62,24 +62,25 @@ task<int> test_coroutine4_1(int* i) noexcept {
     co_return found;
 }
 
-task<int> test_coroutine4(int* i) noexcept {
-    infof("test_coroutine4: start\n"); 
+task<void> test_coroutine4(int* i) noexcept {
+    co_infof("test_coroutine4: start"); 
     auto t = test_coroutine4_1(i);
-    infof("test_coroutine4: create test_coroutine4.1:%p\n", t.get_promise()); 
+    co_infof("test_coroutine4: create test_coroutine4.1:%p", t.get_promise()); 
 
     std::optional<int> value = co_await t;
 
-    infof("test_coroutine4: t_promise_result:%d, has_value?:%d\n",*value, value.has_value());
+    co_infof("test_coroutine4: t_promise_result:%d, has_value?:%d",*value, value.has_value());
 
     KERNEL_ASSERT(*value == 35, "test_coroutine4: value should be 35");
 
     *i+=*value;
-    co_return *i;
+    // i == 39
+    co_return task_ok;
 }
 
 
 task<int> test_coroutine3(int* x) noexcept {
-    infof("test_coroutine3: start\n"); 
+    co_infof("test_coroutine3: start"); 
 
     //auto self = co_await get_taskbase_t{};
     
@@ -92,56 +93,55 @@ task<int> test_coroutine3(int* x) noexcept {
         (*x)++;
     }
 
-    infof("test_coroutine3: end\n"); 
+    co_infof("test_coroutine3: end"); 
     co_return task_fail;
 
     // co_return *x;
 }
 
 task<double> test_coroutine2(int* i) {
-    infof("test_coroutine2: start\n");
+    co_infof("test_coroutine2: start");
     auto t= test_coroutine3(i);
-    infof("test_coroutine2: test_coroutine3 address: %p\n",t.get_promise());
+    co_infof("test_coroutine2: test_coroutine3 address: %p",t.get_promise());
     std::optional<int> x = co_await t;
-    infof("test_coroutine2: after test_coroutine3: x.has_value() = %d\n", x.has_value());
+    co_infof("test_coroutine2: after test_coroutine3: x.has_value() = %d", x.has_value());
 
-    
+    // unreachable
     ++(*i);
     co_return *i;
 }
 
 task<void> test_coroutine1(int* i) {
-    infof("test_coroutine1: start\n");
+    co_infof("test_coroutine1: start");
     task<double> t= test_coroutine2(i);
-    infof("test_coroutine1: test_coroutine2 address: %p\n",t.get_promise());
+    co_infof("test_coroutine1: test_coroutine2 address: %p",t.get_promise());
     std::optional<double> x = co_await t;
-    infof("test_coroutine1: after test_coroutine2: x.has_value() = %d\n", x.has_value());
+    co_infof("test_coroutine1: after test_coroutine2: x.has_value() = %d", x.has_value());
     
+    // unreachable
     ++(*i);
     co_return task_ok;
 }
 
 task<void> test_coroutine(int* i) {
-    uint64 a = -1;
-    co_await kernel_logger.printf("test logger: %d %p %x %s %%\n",a,&a,a,"test");
 
-    infof("test_coroutine: start\n");
+    co_infof("test_coroutine: start");
     bool x;
     {
         task<void> t= test_coroutine1(i);
         t.get_promise()->has_error_handler = true;
-        infof("test_coroutine: test_coroutine1 address: %p\n",t.get_promise());
+        co_infof("test_coroutine: test_coroutine1 address: %p",t.get_promise());
         x = co_await t;
-        infof("test_coroutine: after test_coroutine1, failed?:%d\n", !x);
+        co_infof("test_coroutine: after test_coroutine1, failed?:%d", !x);
     }
     //t.destroy();
-    KERNEL_ASSERT(*i==3, "test_coroutine: i should be 10");
+    KERNEL_ASSERT(*i==3, "test_coroutine: i should be 3");
     ++(*i);
     if (!x) {
         co_return task_fail;
     }
 
-    
+    // i == 4
     co_return task_ok;
 }
 
@@ -150,17 +150,15 @@ task<std::string> test_coro_string(const std::string& x){
 }
 
 task<void> test_coroutine_string() {
-    infof("test_coroutine_string: start\n");
+    co_infof("test_coroutine_string: start");
     std::optional<std::string> ret = co_await test_coro_string("this is async task");
     if(ret){
-        infof("test_coroutine_string: %s\n", ret->c_str());
+        co_infof("test_coroutine_string: %s", ret->c_str());
         co_return task_ok;
     } else {
-        infof("test_coroutine_string: failed\n");
+        co_infof("test_coroutine_string: failed");
         co_return task_fail;
     }
-
-
     
 }
 
@@ -207,7 +205,7 @@ task<void> test_no_return_coro(int* d){
 task<void> test_no_return(){
     int d=0;
     bool ok = co_await test_no_return_coro(&d);
-    infof("test_no_return: %d",ok);
+    co_infof("test_no_return: %d",ok);
     
 }
 
@@ -232,6 +230,7 @@ struct normal_generator{
 };
 
 task<int> coro_generator(){
+    kernel_console_logger.printf("coro_generator: start\n");
     int x1=1;
     int x2=1;
     while(true){
@@ -240,6 +239,7 @@ task<int> coro_generator(){
         x2 = temp;
         co_yield x2;
     }
+
 }
 
 
@@ -250,25 +250,26 @@ void test_normal_generator(int times){
     uint64 end_time;
     normal_generator ng;
     
-    start_time = get_time_us();
+    start_time = timer::get_time_us();
     std::optional<int> x;
     for(int i=0;i<times;i++){
         x = ng.gen();
         if(*x==10){
-            __printf("don't optimize");
+            kernel_console_logger.printf("don't optimize");
         }
     }
-    end_time = get_time_us();
-    __printf("test_normal_generator: elapsed time: %dus\n", (int)(end_time-start_time));
+    end_time = timer::get_time_us();
+    kernel_console_logger.printf("test_normal_generator: elapsed time: %dus\n", (int)(end_time-start_time));
 
 
 }
 task<void> test_coro_generator(int times){
+    kernel_console_logger.printf("test_coro_generator: start\n");
     uint64 start_time;
     uint64 end_time;
     auto gen = coro_generator();
     
-    start_time = get_time_us();
+    start_time = timer::get_time_us();
     std::optional<int> x;
     for(int i=0;i<times;i++){
         //gen.get_handle().resume();
@@ -276,11 +277,20 @@ task<void> test_coro_generator(int times){
         x = co_await gen;
         // printf("has?:%d",x.has_value());
         if(*x==10){
-            infof("don't optimize");
+            co_infof("don't optimize");
         }
     }
-    end_time = get_time_us();
-    infof("test_coro_generator: elapsed time: %dus\n", (int)(end_time-start_time));
+    end_time = timer::get_time_us();
+    co_infof("test_coro_generator: elapsed time: %dus", (int)(end_time-start_time));
+    co_return task_ok;
+}
+
+task<void> test_logger(std::string log_str){
+    kernel_console_logger.printf("test_logger: start\n");
+    co_await kernel_logger.printf("%%\n");
+    uint64 a = -1;
+    co_await kernel_logger.printf("test logger: %d %p %x %s %% %i\n",a,&a,a,"test");
+    kernel_console_logger.printf("test_logger: end\n");
     co_return task_ok;
 }
 
@@ -293,26 +303,30 @@ int kernel_coroutine_test() {
     int test;
     test = 0;
 
-    printf("main: create task\n");
+    kernel_console_logger.printf("main: create task\n");
     auto h = test_coroutine(&test);
     // h.get_promise().fast_fail=false;
-    printf("main: test_coroutine address: %p\n",h.get_promise());
+    kernel_console_logger.printf("main: test_coroutine address: %p\n",h.get_promise());
 
-    printf("main: create task4\n");
+    kernel_console_logger.printf("main: create task4\n");
     auto h4 = test_coroutine4(&test);
-    printf("main: test_coroutine4 address: %p\n",h4.get_promise());
+    kernel_console_logger.printf("main: test_coroutine4 address: %p\n",h4.get_promise());
 
-    printf("main: create test_coroutine_string\n");
+    kernel_console_logger.printf("main: create test_coroutine_string\n");
     auto h5 = test_coroutine_string();
-    printf("main: test_coroutine_string address: %p\n",h5.get_promise());
+    kernel_console_logger.printf("main: test_coroutine_string address: %p\n",h5.get_promise());
+
+    auto t_logger = test_logger("hello world");
 
 
-    auto ho = test_stack_overflow(1000000);
+    auto ho = test_stack_overflow(100000);
     auto ho2 = test_stack_overflow2(100000);
 
     auto tn = test_no_return();
 
     auto test_coro_gen = test_coro_generator(1000000);
+
+    kernel_scheduler.schedule(std::move(t_logger));
 
     kernel_scheduler.schedule(std::move(test_coro_gen));
 
@@ -327,10 +341,10 @@ int kernel_coroutine_test() {
 
     test_normal_generator(1000000);
 
-    printf("main: test scheduler start\n");
+    kernel_console_logger.printf("main: test scheduler start\n");
     kernel_scheduler.start();
 
-    printf("main: test: %d\n", test);
+    kernel_console_logger.printf("main: test: %d\n", test);
     KERNEL_ASSERT(test==39, "test should be 3+1+35");
     return test;
 }

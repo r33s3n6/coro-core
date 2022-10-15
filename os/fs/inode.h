@@ -27,6 +27,9 @@ class dentry {
 class inode {
 
 public:
+    inode(){}
+    virtual ~inode() {}
+
     // no copy to maintain the reference count
     // TODO: inode_ref
     inode(const inode&) = delete;
@@ -48,6 +51,7 @@ public:
     virtual task<int32> load()  { co_return -EPERM; };
 
 
+
     public:
     spinlock rw_lock;
 
@@ -55,7 +59,7 @@ public:
     
     uint32 device_number;
     uint32 inode_number;
-    int32 reference_count;
+    int32 reference_count = 0;
     
     bool valid;
 

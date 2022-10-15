@@ -6,6 +6,16 @@
 
 class sbi_console_file : public file {
     public:
+
+
+    sbi_console_file(){
+        _inode = new inode();
+    }
+
+    ~sbi_console_file() {
+        delete _inode;
+    }
+
     virtual task<int32> open() override {
         co_return 0;
     }

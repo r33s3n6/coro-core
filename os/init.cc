@@ -1,4 +1,6 @@
-#include "mm/utils.h"
+#include <mm/utils.h>
+#include <mm/allocator.h>
+
 #include <sbi/sbi.h>
 #include <utils/log.h>
 #include <drivers/console.h>
@@ -6,7 +8,7 @@
 #include <arch/cpu.h>
 
 // prepare all global variables
-void call_kernel_start();
+extern int call_kernel_start();
 
 
 void clean_bss()
@@ -16,15 +18,29 @@ void clean_bss()
 	memset(s_bss, 0, e_bss - s_bss);
 }
 
+uint32 magic = 0xdeadbeef;
 
 // do not use any global class object here
 // for it is not initialized yet
-extern "C" void kernel_init()
+extern "C" void kernel_init(uint64 hartid)
 {
+    // init bss (stack and heap are not initialized yet)
+    clean_bss();
 
-	clean_bss();
-	__printf("kernel_init: start!\n");
+	if (magic != 0xdeadbeef){
+		panic("not handled exception, restarted by bootloader\n");
+	}
+
+	magic = 0xbeefdead;
+
+	// set hart id
+	w_tp(hartid);
+
+	// this is not dangerous only when printf<false> not access any of its member
+    kernel_console_logger.printf<false>("kernel_init\n");
+	// __printf("kernel_init: start!\n");
 	kernel_logger.log_file = &sbi_console;
+    
 
 
     /*
@@ -46,8 +62,14 @@ extern "C" void kernel_init()
 	scheduler();*/
 
 	// after init bss and enable paging, we can now do the real start
-    call_kernel_start();
-	__printf("kernel_start returned, shutdown...\n");
+
+    kernel_console_logger.printf<false>("call_kernel_start\n");
+    int ret = call_kernel_start();
+    kernel_console_logger.printf<false>("call_kernel_start returned %d\n", ret);
+
+	check_memory();
+    
+    kernel_console_logger.printf<false>("shutdown...\n");
     shutdown();
 }
 
@@ -55,7 +77,7 @@ int kernel_coroutine_test();
 
 // kernel entry
 int kernel_start(){
-	
+
 	init_cpus();
 	cpu::plic_init();
 

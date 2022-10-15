@@ -3,7 +3,7 @@
 
 #include "allocator.h"
 
-
+#include <utils/log.h>
 #include <map>
 
 // temp heap
@@ -45,7 +45,7 @@ void* operator new(std::size_t size) {
     
     
     if(!ptr){
-        __printf("new failed: %d\n",size);
+        kernel_console_logger.printf<false>("new failed: %d\n",size);
         panic("new failed");
     }
     
@@ -67,7 +67,7 @@ void trace_delete(){
 
 
 void operator delete(void* ptr) {
-trace_delete();
+    trace_delete();
     int size = 0;
     for (int i = 0; i < block_top; i++) {
         if (blocks[i].ptr == ptr && blocks[i].valid) {
@@ -77,7 +77,7 @@ trace_delete();
         }
     }
     if (size == 0) {
-        __printf("delete error, ptr: %p\n", ptr);
+        kernel_console_logger.printf<false>(logger::log_level::ERROR,"delete error, ptr: %p\n", ptr);
         return;
     }
 
@@ -95,4 +95,13 @@ void operator delete(void* ptr, std::size_t size) {
 
 void operator delete[](void* ptr) {
     operator delete(ptr);
+}
+
+void check_memory(){
+    for(int i = 0; i < block_top; i++){
+        if(blocks[i].valid){
+            kernel_console_logger.printf("memory leak: %p, size: %d\n", blocks[i].ptr, blocks[i].size);
+        }
+    }
+    kernel_console_logger.printf("check memory done\n");
 }
