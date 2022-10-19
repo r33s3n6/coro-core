@@ -3,14 +3,14 @@
 
 #include <ccore/types.h>
 
-#include <arch/cpu.h>
+
 
 // if you get a deadlock in debugging, define TIMEOUT so that spinlock will panic after
 // some time, and you will see the debugging information
 // but this will impact the performance greatly 
 
 // #define TIMEOUT
-
+class cpu;
 
 class spinlock {
 public:
@@ -27,9 +27,7 @@ public:
 
     // Check whether this cpu is holding the lock.
     // Interrupts must be off.
-    int holding() {
-        return (_locked && _cpu == cpu::my_cpu());
-    }
+    bool holding();
 
 
     private:

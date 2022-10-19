@@ -51,11 +51,10 @@ extern void (*__fini_array_start []) (void) __attribute__((weak));
 extern void (*__fini_array_end []) (void) __attribute__((weak));
 
 
-extern int kernel_start();
 
 
-int call_kernel_start() {
 
+void __init_cxx() {
     std::size_t count;
     std::size_t i;
 
@@ -67,7 +66,12 @@ int call_kernel_start() {
     for (i = 0; i < count; i++)
         __init_array_start[i] ();
 
-    int ret = kernel_start();
+}
+
+void __fini_cxx(){
+    std::size_t count;
+    std::size_t i;
+
 
     count = __fini_array_end - __fini_array_start;
     for (i = 0; i < count; i++)
@@ -75,6 +79,17 @@ int call_kernel_start() {
 
     __cxa_finalize(0);
     
+}
+/*
+extern int kernel_start();
+int call_kernel_start() {
+
+    __init_cxx();
+
+    int ret = kernel_start();
+
+    __fini_cxx();
+    
     return ret;
 
-}
+}*/

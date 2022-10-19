@@ -45,8 +45,8 @@ class logger {
     constexpr static const char* log_level_str[] = {
         "TRACE",
         "DEBUG",
-        "INFO",
-        "WARN",
+        " INFO",
+        " WARN",
         "ERROR"
     };
 
@@ -86,7 +86,7 @@ class file_logger : public logger {
             log_file->file_rw_lock.lock_off();
         }
 
-        co_await __fprintf(log_file, "\033[%dm[%d] [%s] ", color, timer::get_time_us(),
+        co_await __fprintf(log_file, "\033[%dm[%d] [%s] [F] ", color, timer::get_time_us(),
                            log_level_str[level]);
         co_await __fprintf(log_file, fmt, args...);
         co_await __fprintf(log_file, "\033[0m");
@@ -152,7 +152,7 @@ class console_logger : public logger {
             console_printf_lock.lock();
         }
 
-        ret |= __printf("\033[%dm[%d] [%s] [RAW] ", color, timer::get_time_us(),
+        ret |= __printf("\033[%dm[%d] [%s] [C] ", color, timer::get_time_us(),
                            log_level_str[level]);
 
         ret |= __vprintf(fmt, args);
@@ -260,51 +260,100 @@ extern logger::log_color debug_core_color[];
 
 
 #if defined(USE_LOG_WARN)
-
-#define co_warnf(fmt, ...) co_await kernel_logger.printf(logger::log_level::WARN, logger::log_color::YELLOW, fmt "\n", ##__VA_ARGS__)
+#define co_warnf(fmt, ...) co_await kernel_logger.printf(logger::log_level::WARN, fmt "\n", ##__VA_ARGS__)
+#define __console_warnf(with_lock,fmt, ...) kernel_console_logger.printf<with_lock>(logger::log_level::WARN, fmt "\n", ##__VA_ARGS__)
+#define __warnf(fmt, ...) __console_warnf(false, fmt, ##__VA_ARGS__)
+#define warnf(fmt, ...) __console_warnf(true, fmt, ##__VA_ARGS__)
 #else
 #define co_warnf(fmt, ...)
-#endif //
+#define __warnf(fmt, ...)
+#define warnf(fmt, ...)
+#endif
 
 #if defined(USE_LOG_ERROR)
 
 // with trace back information
 #define co_errorf(fmt, ...)                                                                                          \
     do {                                                                                                          \
-        int hartid = cpuid();                                      \
-        co_await kernel_logger.printf(logger::log_level::ERROR, logger::::log_color::RED, "[%d] %s:%d: "fmt"\n", hartid, __FILE__, __LINE__, ##__VA_ARGS__); \
+        int hartid = cpu::current_id();                                   \
+        co_await kernel_logger.printf(logger::log_level::ERROR, "[%d] %s:%d: " fmt "\n", hartid, __FILE__, __LINE__, ##__VA_ARGS__); \
         co_await kernel_logger.print_trace();                                                                       \
     } while (0)
+
+
+#define __console_errorf(with_lock, fmt, ...)                                                                                          \
+    do {                                                                                                          \
+        int hartid = cpu::current_id();                                      \
+        kernel_console_logger.printf<with_lock>(logger::log_level::ERROR, "[%d] %s:%d: " fmt "\n", hartid, __FILE__, __LINE__, ##__VA_ARGS__); \
+        /* co_await kernel_logger.print_trace();  */                                                                     \
+    } while (0)
+#define __errorf(fmt, ...) __console_errorf(false, fmt, ##__VA_ARGS__)    
+#define errorf(fmt, ...)   __console_errorf(true, fmt, ##__VA_ARGS__)    
+
 #else
+
+
 #define co_errorf(fmt, ...)
+#define __errorf(fmt, ...)
+#define errorf(fmt, ...)
+
 #endif //
 
 #if defined(USE_LOG_DEBUG)
 
-#define co_debugf(fmt, ...) co_await kernel_logger.printf(logger::log_level::DEBUG, logger::log_color::GREEN, fmt"\n", ##__VA_ARGS__)
+#define co_debugf(fmt, ...) co_await kernel_logger.printf(logger::log_level::DEBUG, fmt"\n", ##__VA_ARGS__)
 
 #define co_debug_core(fmt, ...)                                                                                   \
     do {                                                                                                      \
-        int hartid = cpuid();                                                                                 \
+        int hartid = cpu::current_id();                                                                                      \
         co_await kernel_logger.printf(logger::log_level::DEBUG, debug_core_color[hartid], "[%d] "fmt"\n", hartid, ##__VA_ARGS__); \
     } while (0)
 
 // print var in hex
 #define co_phex(var_name) co_debugf(#var_name "=%p", var_name)
 
+#define __console_debugf(with_lock,fmt, ...) kernel_console_logger.printf<with_lock>(logger::log_level::DEBUG, fmt"\n", ##__VA_ARGS__)
+#define __debugf(fmt, ...) __console_debugf(false, fmt, ##__VA_ARGS__)
+#define debugf(fmt, ...) __console_debugf(true, fmt, ##__VA_ARGS__)
+
+#define __console_debug_core(with_lock, fmt, ...)                                                                                   \
+    do {                                                                                                      \
+        int hartid = cpu::current_id();                                                                                      \
+        kernel_console_logger.printf<with_lock>(logger::log_level::DEBUG, debug_core_color[hartid], "[%d] "fmt"\n", hartid, ##__VA_ARGS__); \
+    } while (0)
+
+#define __debug_core(fmt, ...) __console_debug_core(false, fmt, ##__VA_ARGS__)
+#define debug_core(fmt, ...) __console_debug_core(true, fmt, ##__VA_ARGS__)
+
+#define __console_phex(with_lock, var_name) __console_debugf(with_lock, #var_name "=%p", var_name)
+#define __phex(var_name) __console_phex(false, var_name)
+#define phex(var_name) __console_phex(true, var_name)
+
+
 #else
+
 #define co_debugf(fmt, ...)
 #define co_debugcore(fmt, ...)
 #define co_phex(var_name) (void)(var_name);
-#endif //
+#define __console_debugf(fmt, ...)
+#define __debugf(fmt, ...)
+#define debugf(fmt, ...)
+#define __console_debug_core(fmt, ...)
+#define __debug_core(fmt, ...)
+#define debug_core(fmt, ...)
+#define __console_phex(var_name)
+#define __phex(var_name)
+#define phex(var_name)
+
+#endif 
 
 #if defined(USE_LOG_TRACE)
 
-#define co_tracef(fmt, ...) co_await kernel_logger.printf(logger::log_level::TRACE, logger::log_color::GRAY, fmt"\n", ##__VA_ARGS__)
+#define co_tracef(fmt, ...) co_await kernel_logger.printf(logger::log_level::TRACE, fmt"\n", ##__VA_ARGS__)
 
 #define co_trace_core(fmt, ...)                                                                             \
     do {                                                                                                \
-        uint64 hartid = cpuid();                                                                        \
+        uint64 hartid = cpu::current_id();                                                                        \
         co_await kernel_logger.printf(logger::log_level::TRACE, debug_core_color[hartid], "[%d] "fmt"\n", hartid, ##__VA_ARGS__); \
     } while (0)
 #else
@@ -314,9 +363,15 @@ extern logger::log_color debug_core_color[];
 
 #if defined(USE_LOG_INFO)
 
-#define co_infof(fmt, ...) co_await kernel_logger.printf(logger::log_level::INFO, logger::log_color::BLUE, fmt"\n", ##__VA_ARGS__)
+#define co_infof(fmt, ...) co_await kernel_logger.printf(logger::log_level::INFO, fmt"\n", ##__VA_ARGS__)
+#define __console_infof(with_lock,fmt, ...) kernel_console_logger.printf<with_lock>(logger::log_level::INFO, fmt"\n", ##__VA_ARGS__)
+#define __infof(fmt, ...) __console_infof(false, fmt, ##__VA_ARGS__)
+#define infof(fmt, ...) __console_infof(true, fmt, ##__VA_ARGS__)
 #else
 #define co_infof(fmt, ...)
+#define __console_infof(fmt, ...)
+#define __infof(fmt, ...)
+#define infof(fmt, ...)
 #endif //
 
 #endif //!__LOG_H__

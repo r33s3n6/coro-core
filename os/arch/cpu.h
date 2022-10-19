@@ -17,6 +17,7 @@
 #include <utils/panic.h>
 
 
+
 class cpu;
 extern cpu cpus[NCPU];
 
@@ -77,6 +78,12 @@ class cpu {
         *(uint32 *)(PLIC + VIRTIO0_IRQ * 4) = 1;
     }
 
+    void boot_hart();
+
+    bool is_booted(){
+        return booted;
+    }
+
     void plic_init_hart() {
         // set uart's enable bit for this hart's S-mode.
         *(uint32 *)PLIC_SENABLE(core_id) = (1 << VIRTIO0_IRQ);
@@ -95,9 +102,8 @@ class cpu {
         *(uint32 *)PLIC_SCLAIM(core_id) = irq;
     }
 
-    void halt(){
-        this->halted = true;
-    }
+
+    void halt();
 
     // push_off/pop_off are like intr_off()/intr_on() except that they are matched:
     // it takes two pop_off()s to undo two push_off()s.  Also, if interrupts
@@ -129,19 +135,6 @@ class cpu {
     
     // set halted of this core to True
 
-    // static void halt() {
-    //     cpu* c = my_cpu();
-    //     c->halt();
-    // }
-
-    // Barrier
-    // Will not return until all cores halted
-    static void wait_all_halt() {
-        for (int i = 0; i < NCPU; i++) {
-            while (!cpus[i].halted)
-                ;
-        }
-    }
 
     void __print();
     task<void> print();

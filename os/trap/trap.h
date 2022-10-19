@@ -82,4 +82,7 @@ enum Interrupt {
     SupervisorExternal,
 };
 
+void trap_init_hart();
+void set_kerneltrap();
+
 #endif // TRAP_H

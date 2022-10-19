@@ -6,13 +6,12 @@
 
 #include <file/file.h>
 
+#include <mm/layout.h>
+
 
 #include "exec.h"
 
 #define NPROC (256)
-#define KSTACK_SIZE (8192)
-#define USTACK_SIZE (4096)
-#define TRAPFRAME_SIZE (4096)
 #define FD_MAX (16)
 #define PROC_NAME_MAX (16)
 #define MAX_PROC_SHARED_MEM_INSTANCE (32)   // every proc

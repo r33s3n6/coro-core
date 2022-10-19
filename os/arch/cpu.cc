@@ -2,6 +2,15 @@
 
 #include <utils/log.h>
 
+#include <cxx/icxxabi.h>
+#include <sbi/sbi.h>
+
+#include <mm/allocator.h>
+
+#include <trap/trap.h>
+#include <mm/vmem.h>
+
+
 
 cpu cpus[NCPU];
 
@@ -60,3 +69,30 @@ void cpu::push_off(){
     noff += 1;
 }
 
+void cpu::halt(){
+    this->halted = true;
+    if (core_id == 0) {
+        debug_core("waiting for other cores to halt");
+        for (int i = 0; i < NCPU; i++) {
+            while (!cpus[i].halted);
+        }
+        __fini_cxx();
+
+        check_memory();
+        __infof("[ccore] All finished. Shutdown ...");
+        shutdown();
+    }
+    else{
+        while(1){
+            asm volatile("wfi");
+        }
+    }
+    
+}
+
+void cpu::boot_hart(){
+    kvminithart(); // turn on paging
+    trap_init_hart();
+    plic_init_hart(); // ask PLIC for device interrupts
+    booted=true;
+}

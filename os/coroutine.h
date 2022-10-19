@@ -5,7 +5,7 @@
 #include <optional>
 #include <queue>
 
-#include <mm/allocator.h>
+// #include <mm/allocator.h>
 #include <ccore/types.h>
 
 #include <utils/printf.h>
@@ -242,7 +242,7 @@ struct promise : public promise_base {
 
     // we only allow void task return task_ok
     template <typename T = return_type>
-    void return_value(std::enable_if_t<std::is_same_v<T, void>, task_ok_t> t) {
+    void return_value(std::enable_if_t<std::is_same_v<T, void>, task_ok_t>) {
         result.set_value();
         _status = done;
     }
@@ -254,7 +254,7 @@ struct promise : public promise_base {
     //    _status = done;
     //}
 
-    void return_value(const task_fail_t& t) {
+    void return_value(const task_fail_t&) {
         // printf("task %p return fail\n", this);
         result.has_value = false;
         _status = fail;

@@ -1,7 +1,10 @@
 #include "spinlock.h"
 
+#include <arch/cpu.h>
+
 #include <utils/panic.h>
 #include <utils/log.h>
+
 
 // Acquire the lock.
 // Loops (spins) until the lock is acquired.
@@ -80,4 +83,8 @@ void spinlock::unlock() {
     //                logger::log_level::WARN, 
     //                "release lock: %s\n", _name);
     cpu::my_cpu()->pop_off();
+}
+
+bool spinlock::holding() {
+    return (_locked && _cpu == cpu::my_cpu());
 }

@@ -2,20 +2,20 @@
 #include <mm/layout.h>
 #include <ccore/types.h>
 
-#include <proc/proc.h>
+// #include <proc/proc.h>
+
+#include <utils/log.h>
+#include <utils/assert.h>
 
 #include "trap.h"
 
 
 extern char trampoline[], uservec[], userret[];
-void kernelvec();
+extern "C" void kernelvec();
 
-void trapinit_hart() {
+void trap_init_hart() {
     set_kerneltrap();
     w_sie(r_sie() | SIE_SEIE | SIE_SSIE);
-}
-
-void trapinit() {
 }
 
 // set up to take exceptions and traps while in the kernel.
@@ -24,7 +24,7 @@ void set_usertrap(void) {
     w_stvec(((uint64)TRAMPOLINE + (uservec - trampoline)) & ~0x3); // DIRECT
 }
 
-void set_kerneltrap(void) {
+void set_kerneltrap() {
     w_stvec((uint64)kernelvec & ~0x3); // DIRECT
     intr_on();
 }
@@ -34,18 +34,18 @@ void kernel_interrupt_handler(uint64 scause, uint64 stval, uint64 sepc) {
     int irq;
     switch (cause) {
     case SupervisorTimer:
-        set_next_timer();
-        yield();
+        timer::set_next_timer();
+        //--  yield();
         break;
     case SupervisorExternal:
-        irq = plic_claim();
+        irq = cpu::my_cpu()->plic_claim();
         if (irq == VIRTIO0_IRQ) {
-            virtio_disk_intr();
+            //--  virtio_disk_intr();
         } else if(irq>0) {
             warnf("unexpected interrupt irq=%d", irq);
         }
         if (irq) {
-            plic_complete(irq);
+            cpu::my_cpu()->plic_complete(irq);
         }
         break;
     default:
@@ -54,27 +54,27 @@ void kernel_interrupt_handler(uint64 scause, uint64 stval, uint64 sepc) {
         break;
     }
 }
-
+/*
 void user_interrupt_handler(uint64 scause, uint64 stval, uint64 sepc) {
     int irq;
     switch (scause & 0xff) {
     case SupervisorTimer:
-        set_next_timer();
-        yield();
+        timer::set_next_timer();
+        //--  yield();
         break;
     case SupervisorExternal:
-        irq = plic_claim();
+        irq = cpu::my_cpu()->plic_claim();
         if (irq == UART0_IRQ) {
             infof("unexpected interrupt irq=UART0_IRQ");
 
         } else if (irq == VIRTIO0_IRQ) {
-            virtio_disk_intr();
+            //--  virtio_disk_intr();
         } else if (irq) {
             infof("unexpected interrupt irq=%d", irq);
         }
         if (irq) {
 
-            plic_complete(irq);
+            cpu::my_cpu()->plic_complete(irq);
         }
         break;
     default:
@@ -92,7 +92,7 @@ void user_exception_handler(uint64 scause, uint64 stval, uint64 sepc) {
             exit(-1);
         trapframe->epc += 4;
         intr_on();
-        syscall();
+        //-- syscall();
         break;
     case StoreAccessFault:
         infof("StoreAccessFault in user application: %p, stval = %p sepc = %p\n", scause, stval, sepc);
@@ -153,7 +153,7 @@ void usertrap() {
     } else { // interrput = 0
         user_exception_handler(scause, stval, sepc);
     }
-    pushtrace(0x3036);
+    //-- pushtrace(0x3036);
     usertrapret();
 }
 
@@ -169,7 +169,7 @@ void usertrapret() {
     // we're back in user space, where usertrap() is correct.
     // intr_off();
     set_usertrap();
-    pushtrace(0x3001);
+    //-- pushtrace(0x3001);
     struct proc *p = curr_proc();
     struct trapframe *trapframe = p->trapframe;
     trapframe->kernel_satp = r_satp();         // kernel page table
@@ -197,6 +197,8 @@ void usertrapret() {
     // debugcore("return to user, satp=%p, trampoline=%p, kernel_trap=%p\n",satp, fn,  trapframe->kernel_trap);
     ((void (*)(uint64, uint64))fn)(TRAPFRAME, satp);
 }
+
+*/
 
 void kernel_exception_handler(uint64 scause, uint64 stval, uint64 sepc) {
     switch (scause & 0xff) {
@@ -248,12 +250,12 @@ void kernel_exception_handler(uint64 scause, uint64 stval, uint64 sepc) {
 
 // interrupts and exceptions from kernel code go here via kernelvec,
 // on whatever the current kernel stack is.
-void kerneltrap() {
+extern "C" void kerneltrap() {
     uint64 sepc = r_sepc();
     uint64 sstatus = r_sstatus();
     uint64 scause = r_scause();
     uint64 stval = r_stval();
-    pushtrace(0x3000);
+    //-- pushtrace(0x3000);
     KERNEL_ASSERT(!intr_get(), "Interrupt can not be turned on in trap handler");
     KERNEL_ASSERT((sstatus & SSTATUS_SPP) != 0, "kerneltrap: not from supervisor mode");
     // debugcore("Enter kernel trap handler, scause=%p, sepc=%p", scause,sepc);

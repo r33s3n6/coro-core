@@ -39,3 +39,33 @@
 
 #define USER_STACK_BOTTOM 0xC0000000   // 3GB, user stack lower address 
 #define USER_TEXT_START 0x1000
+
+
+#define KSTACK_SIZE (8192)
+#define USTACK_SIZE (4096)
+#define TRAPFRAME_SIZE (4096)
+
+extern char skernel[];
+extern char ekernel[];
+
+extern char s_text[];
+extern char e_text[]; // kernel.ld sets this to end of kernel code.
+
+extern char s_rodata[];
+extern char e_rodata[];
+
+extern char s_data[];
+extern char e_data[];
+
+extern char s_bss[];
+extern char e_bss[];
+
+
+extern char trampoline[];
+
+
+extern char boot_stack_top[];
+extern char boot_stack_bottom[];
+
+
+extern char _entry[]; // kernel.ld sets this to the entry address of kernel code.

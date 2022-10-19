@@ -80,12 +80,3 @@ namespace std{
     nothrow_t nothrow;
 }
 
-//TODO
-//int threadid(){
-//    return 0;
-//}
-//
-//int cpuid()
-//{
-//	return 0;
-//}

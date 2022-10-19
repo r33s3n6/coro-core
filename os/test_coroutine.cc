@@ -35,7 +35,7 @@ task<int> test_walker(int lo, int hi) {
     co_return 0;
 }
 
-task<int> test_coroutine4_1(int* i) noexcept {
+task<int> test_coroutine4_1(int*) noexcept {
     co_infof("test_coroutine4.1: start"); 
     auto walker = test_walker(2, 5);
     co_infof("test_coroutine4.1: create test_walker:%p", walker.get_promise()); 
@@ -58,7 +58,7 @@ task<int> test_coroutine4_1(int* i) noexcept {
         co_await this_scheduler;
     }
 
-    
+
     co_return found;
 }
 
@@ -290,6 +290,7 @@ task<void> test_logger(std::string log_str){
     co_await kernel_logger.printf("%%\n");
     uint64 a = -1;
     co_await kernel_logger.printf("test logger: %d %p %x %s %% %i\n",a,&a,a,"test");
+    co_await kernel_logger.printf("test logger: %s\n",log_str.c_str());
     kernel_console_logger.printf("test_logger: end\n");
     co_return task_ok;
 }

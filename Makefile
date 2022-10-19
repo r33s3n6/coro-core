@@ -30,11 +30,12 @@ HEADER_DEP = $(addsuffix .d, $(basename $(CXX_OBJS)))
 
 INCLUDEFLAGS = -I$K
 
-CXXFLAGS = -Wall -Werror # lint
+CXXFLAGS = -Wall -Wextra -Werror # lint
 CXXFLAGS += -Og -g -fno-omit-frame-pointer -ggdb # debug
 CXXFLAGS += -foptimize-sibling-calls -fcoroutines -std=c++20 -fno-exceptions -fno-rtti -D HANDLE_MEMORY_ALLOC_FAIL# coroutine
 CXXFLAGS += -D NCPU=$(CPUS) # cpu
 CXXFLAGS += -MD
+CXXFLAGS += -D MEMORY_DEBUG
 CXXFLAGS += -mcmodel=medany
 CXXFLAGS += -ffreestanding -fno-common -nostdlib -lgcc -mno-relax
 CXXFLAGS += -Wno-error=write-strings -Wno-write-strings

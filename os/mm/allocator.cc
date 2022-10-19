@@ -6,6 +6,8 @@
 #include <utils/log.h>
 #include <map>
 
+allocator kernel_allocator((void*)ekernel, (void*)PHYSTOP);
+
 // temp heap
 char heap[40960];
 std::size_t top = 40960;
@@ -90,6 +92,7 @@ void operator delete(void* ptr) {
 }
 
 void operator delete(void* ptr, std::size_t size) {
+    (void)(size);
     operator delete(ptr);
 }
 
@@ -97,11 +100,17 @@ void operator delete[](void* ptr) {
     operator delete(ptr);
 }
 
+void operator delete [](void* ptr, std::size_t size) {
+    (void)(size);
+    operator delete(ptr);
+
+}
+
 void check_memory(){
     for(int i = 0; i < block_top; i++){
         if(blocks[i].valid){
-            kernel_console_logger.printf("memory leak: %p, size: %d\n", blocks[i].ptr, blocks[i].size);
+            __infof("memory leak: %p, size: %d", blocks[i].ptr, blocks[i].size);
         }
     }
-    kernel_console_logger.printf("check memory done\n");
+    __infof("check memory done");
 }

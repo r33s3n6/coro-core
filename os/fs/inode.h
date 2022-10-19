@@ -12,6 +12,9 @@
 
 #include <utils/utility.h>
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+
 class inode;
 
 class dentry {
@@ -34,6 +37,9 @@ public:
     // TODO: inode_ref
     inode(const inode&) = delete;
 
+// suppress unused variable warning
+
+
     
     // inode operations
     virtual task<int32> truncate(int64 size)  { co_return -EPERM; };
@@ -45,6 +51,7 @@ public:
     virtual task<int32> unlink(dentry* old_dentry )  { co_return -EPERM; };
     virtual task<int32> mkdir(dentry* new_dentry)  { co_return -EPERM; };
     virtual task<int32> rmdir(dentry* old_dentry)  { co_return -EPERM; };
+
 
 
     // sync from disk to memory
@@ -139,6 +146,7 @@ class file {
     bool in_rw = false;
 };
 
+#pragma GCC diagnostic pop
 
 /*
 

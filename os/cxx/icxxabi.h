@@ -22,7 +22,10 @@ void __cxa_finalize(void *f);
 void __cxa_pure_virtual();
 
 
+
 };
 
+void __init_cxx();
+void __fini_cxx();
 
 #endif//ICXXABI_H

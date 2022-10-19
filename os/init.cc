@@ -1,5 +1,8 @@
 #include <mm/utils.h>
 #include <mm/allocator.h>
+#include <mm/vmem.h>
+#include <mm/layout.h>
+
 
 #include <sbi/sbi.h>
 #include <utils/log.h>
@@ -7,8 +10,15 @@
 
 #include <arch/cpu.h>
 
-// prepare all global variables
-extern int call_kernel_start();
+#include <cxx/icxxabi.h>
+
+#include <trap/trap.h>
+
+
+uint32 magic = 0xdeadbeef;
+
+volatile static bool is_first = true;
+volatile static int  all_started = 0;
 
 
 void clean_bss()
@@ -18,196 +28,104 @@ void clean_bss()
 	memset(s_bss, 0, e_bss - s_bss);
 }
 
-uint32 magic = 0xdeadbeef;
+// deprecated
+void init_globals(){
+    kernel_logger.log_file = &sbi_console;
+    /*
+            procinit();
+        binit();        // buffer cache
+        inode_table_init();        // inode cache
+        fileinit();     // file table
+        init_trace();
+
+        init_abstract_disk();
+
+
+        init_app_names();
+        init_scheduler();
+        make_shell_proc();
+        */
+
+}
+
+extern int kernel_coroutine_test();
+
+// test code
+void scheduler(){
+    if (cpu::current_id() == 0){
+        infof("scheduler: run kernel_coroutine_test");
+        int ret = kernel_coroutine_test();
+        infof("kernel_coroutine_test returned %d\n", ret);
+
+    }else{
+        infof("cpu %d is idle", cpu::current_id());
+    }
+}
 
 // do not use any global class object here
 // for it is not initialized yet
 extern "C" void kernel_init(uint64 hartid)
 {
-    // init bss (stack and heap are not initialized yet)
-    clean_bss();
+    //if (magic != 0xdeadbeef){
+		//panic("not handled exception, restarted by bootloader\n");
+	//}
 
-	if (magic != 0xdeadbeef){
-		panic("not handled exception, restarted by bootloader\n");
-	}
+	//magic = 0xbeefdead;
 
-	magic = 0xbeefdead;
+    // set pagetables 
+    if (is_first){
+        is_first = false;
 
-	// set hart id
-	w_tp(hartid);
+        // this is not dangerous only when printf<false> not access any of its member
+        __infof("kernel_init");
 
-	// this is not dangerous only when printf<false> not access any of its member
-    kernel_console_logger.printf<false>("kernel_init\n");
-	// __printf("kernel_init: start!\n");
-	kernel_logger.log_file = &sbi_console;
-    
-
-
-    /*
-	proc_init();
-	kinit();
-	kvm_init();
-	trap_init();
-	*/
-	
-
-	/*
-	virtio_disk_init();
-	binit();
-	fsinit();
-	timer_init();
-	load_init_app();
-	infof("start scheduler!");
-	show_all_files();
-	scheduler();*/
-
-	// after init bss and enable paging, we can now do the real start
-
-    kernel_console_logger.printf<false>("call_kernel_start\n");
-    int ret = call_kernel_start();
-    kernel_console_logger.printf<false>("call_kernel_start returned %d\n", ret);
-
-	check_memory();
-    
-    kernel_console_logger.printf<false>("shutdown...\n");
-    shutdown();
-}
-
-int kernel_coroutine_test();
-
-// kernel entry
-int kernel_start(){
-
-	init_cpus();
-	cpu::plic_init();
-
-	return kernel_coroutine_test();
-}
-
-// TODO: temporary test code
-extern "C" void kerneltrap(){
-
-}
-
-/*
-#include <arch/riscv.h>
-#include <ucore/ucore.h>
-#include <file/file.h>
-#include <proc/proc.h>
-extern char s_bss[];
-extern char e_bss[];
-extern char s_text[];
-extern char e_text[];
-extern char s_rodata[];
-extern char e_rodata[];
-extern char s_data[];
-extern char e_data[];
-extern char boot_stack[];
-extern char boot_stack_top[];
-static void clean_bss() {
-    char *p;
-    for (p = s_bss; p < e_bss; ++p)
-        *p = 0;
-}
-
-volatile static int first_hart = 1;
-volatile static int all_started = 0;
-void start_hart(uint64 hartid, uint64 start_addr, uint64 a1);
-void hart_bootcamp(uint64 hartid, uint64 a1) {
-    w_tp(hartid);
-    kvminithart(); // turn on paging
-    trapinit_hart();
-
-    plicinithart(); // ask PLIC for device interrupts
-
-    printf("[ucore] start bootcamp hart %d\n", hartid);
-    booted[hartid] = 1;
-}
-
-void wait_all_boot() {
-    for (int i = 0; i < NCPU; i++) {
-        while (!booted[i])
-            ;
-    }
-    all_started = 1;
-}
-void init_booted() {
-    for (int i = 0; i < NCPU; i++) {
-        booted[i] = 0;
-        halted[i] = 0;
-    }
-}
-
-extern char _entry[];
-void main(uint64 hartid, uint64 a1) {
-    if (first_hart) {
-        w_tp(hartid);
-        first_hart = FALSE;
-        printf_k("\n");
-        printf_k("[ucore] Boot hartid=%d\n", hartid);
-        printf_k("[ucore] Core count: %d\n", NCPU);
-        printf_k("[ucore] a1=%p\n", a1);
-        printf_k("[ucore] s_text=%p, e_text=%p\n", s_text, e_text);
-        printf_k("[ucore] s_rodata=%p, e_rodata=%p\n", s_rodata, e_rodata);
-        printf_k("[ucore] s_data=%p, e_data=%p\n", s_data, e_data);
-        printf_k("[ucore] s_bss_stack=%p, e_bss_stack=%p\n", boot_stack, boot_stack_top);
-        printf_k("[ucore] s_bss=%p, e_bss=%p\n", s_bss, e_bss);
-
+        __infof("clean bss...");
+        // init bss (stack and heap are not initialized yet)
         clean_bss();
-        init_cpu();
-        printfinit();
-        trapinit();
-        trapinit_hart();
-        kinit();
-        procinit();
-        plicinit();     // set up interrupt controller
-        plicinithart(); // ask PLIC for device interrupts
-        binit();        // buffer cache
-        inode_table_init();        // inode cache
-        fileinit();     // file table
-        init_trace();
-        // virtio_disk_init();
-        init_abstract_disk();
+
+        __infof("init globals...");
+        // global constructors
+        __init_cxx();
+
+        infof("=======");
+        infof("[ccore] Boot hartid=%d", hartid);
+        infof("[ccore] Core count: %d", NCPU);
+        infof("[ccore] s_text=%p, e_text=%p", s_text, e_text);
+        infof("[ccore] s_rodata=%p, e_rodata=%p", s_rodata, e_rodata);
+        infof("[ccore] s_data=%p, e_data=%p", s_data, e_data);
+        infof("[ccore] s_bss_stack=%p, e_bss_stack=%p", boot_stack_top, boot_stack_bottom);
+        infof("[ccore] s_bss=%p, e_bss=%p", s_bss, e_bss);
+
+        // set cpu id
+        init_cpus();
         kvminit();
-        kvminithart();
-        timerinit();    // do nothing
-        init_app_names();
-        init_scheduler();
-        make_shell_proc();
+        cpu::plic_init();
 
-        init_booted();
-        booted[hartid] = 1;
+        init_globals();
 
-
-
-        for (int i = 0; i < NCPU; i++) {
-        if (i != hartid) // not this hart
-        {
-            printf("[ucore] start hart %d\n", i);
-            start_hart(i, (uint64)_entry, 0);
-        }
+        for (uint64 i = 0; i < NCPU; i++) {
+            if (i != hartid) // not this hart
+            {
+                infof("[ccore] start hart %d", (uint32)i);
+                start_hart(i, (uint64)_entry, 0);
+            }
         }
 
-        wait_all_boot();
-    } else {
-        hart_bootcamp(hartid, a1);
-    }
-    while (!all_started) {
-        ; // wait until all hard started
     }
 
-    debugcore("start scheduling!");
+    cpu* my_cpu = cpu::my_cpu();
+    my_cpu->boot_hart();
+    infof("[ccore] hart %d starting", hartid);
+    
+    for(int i=0;i<NCPU;i++){
+        while (!cpus[i].is_booted());
+    }
+
+    // all hart started
     scheduler();
-    debugf("halt");
-    halt();
-    if (cpuid() == 0) {
-        debugcore("wait other halt");
-        wait_all_halt();
-        printf("[ucore] All finished. Shutdown ...\n");
-        shutdown();
-    } else {
-        for (;;)
-            ;
-    }
+
+    
+    cpu* current_cpu = cpu::my_cpu();
+    current_cpu->halt();
 }
-*/
+
