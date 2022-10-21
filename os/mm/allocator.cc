@@ -21,8 +21,11 @@ struct mm_block {
 mm_block blocks[256];
 int block_top = 0;
 
+spinlock heap_lock{"heap_lock"};
+
 // TODO: failed when no memory
 void* operator new(std::size_t size) {
+    auto guard = make_lock_guard(heap_lock);
 
     void* ptr = nullptr;
     for(int i=0;i<block_top;i++){
@@ -51,7 +54,7 @@ void* operator new(std::size_t size) {
         panic("new failed");
     }
     
-    // printf("new size %d, ptr: %p\n", size, ptr);
+    // __debug_core("new size %d, ptr: %p", size, ptr);
     return ptr;
 }
 
@@ -69,6 +72,7 @@ void trace_delete(){
 
 
 void operator delete(void* ptr) {
+    auto guard = make_lock_guard(heap_lock);
     trace_delete();
     int size = 0;
     for (int i = 0; i < block_top; i++) {
@@ -87,7 +91,7 @@ void operator delete(void* ptr) {
         ((char*)ptr)[i] = 0xcd;
     }
 
-    // printf("delete: %p\n", ptr);
+    //debug_core("delete: %p", ptr);
     
 }
 

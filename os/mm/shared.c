@@ -9,7 +9,7 @@ void init_shared_mem()
     init_spin_lock_with_name(&shared_mem_pool_lock, "shared_mem_pool_lock");
     for (int i = 0; i < MAX_SHARED_MEM_INSTANCE; i++)
     {
-        shared_mem_pool[i].used = FALSE;
+        shared_mem_pool[i].used = false;
         shared_mem_pool[i].ref = 0;
         shared_mem_pool[i].page_cnt = 0;
         memset(shared_mem_pool[i].name, 0, MAX_SHARED_NAME);
@@ -46,9 +46,9 @@ struct shared_mem *get_shared_mem_by_name(char *name, int page_cnt)
 
     for (int i = 0; i < MAX_SHARED_MEM_INSTANCE; i++)
     {
-        if (shared_mem_pool[i].used == FALSE) // empty
+        if (shared_mem_pool[i].used == false) // empty
         {
-            shared_mem_pool[i].used = TRUE;
+            shared_mem_pool[i].used = true;
             shared_mem_pool[i].ref = 1;
             shared_mem_pool[i].page_cnt = 0;
             strncpy(shared_mem_pool[i].name, name, MAX_SHARED_NAME);
@@ -65,7 +65,7 @@ struct shared_mem *get_shared_mem_by_name(char *name, int page_cnt)
                         recycle_physical_page(shared_mem_pool[i].mem_pages[k]);
                     }
                     // clear
-                    shared_mem_pool[i].used = FALSE;
+                    shared_mem_pool[i].used = false;
                     shared_mem_pool[i].ref = 0;
                     shared_mem_pool[i].page_cnt = 0;
                     memset(shared_mem_pool[i].name, 0, MAX_SHARED_NAME);
@@ -93,7 +93,7 @@ void drop_shared_mem(struct shared_mem *shmem)
     if (shmem->ref == 0)
     {
         debugcore("a shared mem ref decreased to 0, recycle %d pages", shmem->page_cnt);
-        shmem->used = FALSE;
+        shmem->used = false;
         memset(shmem->name, 0, MAX_SHARED_NAME);
         for (int j = 0; j < shmem->page_cnt; j++)
         {

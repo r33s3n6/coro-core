@@ -333,7 +333,7 @@ int64 sys_munmap(void *start, uint64 len) {
     int npages = PGROUNDUP(len) / PGSIZE;
 
     for (a = va; a < va + npages * PGSIZE; a += PGSIZE) {
-        if ((pte = walk(pagetable, a, FALSE)) == 0) {
+        if ((pte = walk(pagetable, a, false)) == 0) {
             infof("uvmunmap: walk\n");
             return -1;
         }

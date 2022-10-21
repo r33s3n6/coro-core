@@ -39,15 +39,6 @@ int get_app_id_by_name(char *name)
     return -1;
 }
 
-void alloc_ustack(struct proc *p)
-{
-    if (mappages(p->pagetable, USER_STACK_BOTTOM - USTACK_SIZE, USTACK_SIZE, (uint64)alloc_physical_page(), PTE_U | PTE_R | PTE_W | PTE_X) != 0)
-    {
-        panic("alloc_ustack");
-    }
-    p->ustack_bottom = USER_STACK_BOTTOM;
-    p->trapframe->sp = p->ustack_bottom;
-}
 
 void bin_loader(uint64 start, uint64 end, struct proc *p)
 {
@@ -66,9 +57,8 @@ void bin_loader(uint64 start, uint64 end, struct proc *p)
     }
 
     p->trapframe->epc = USER_TEXT_START;
-    alloc_ustack(p);
-    p->next_shmem_addr = (void*) p->ustack_bottom+PGSIZE;
-    p->total_size = USTACK_SIZE + length;
+
+    p->bin_size = length;
 }
 
 void loader(int id, struct proc *p) {

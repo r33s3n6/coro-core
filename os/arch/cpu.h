@@ -2,7 +2,7 @@
 #define ARCH_CPU_H
 
 #ifndef NCPU
-#define NCPU 1
+#define NCPU 4
 #endif  // NCPU
 
 #define SAMPLE_SLOT_COUNT 8
@@ -11,12 +11,16 @@
 #include <arch/riscv.h>
 #include <mm/layout.h>
 
-#include <proc/thread.h>
-
 #include <coroutine.h>
 #include <utils/panic.h>
 
 
+#include <functional>
+
+
+class process;
+class user_process;
+class kernel_process;
 
 class cpu;
 extern cpu cpus[NCPU];
@@ -42,15 +46,24 @@ struct context {
     uint64 s9;
     uint64 s10;
     uint64 s11;
+
+    // parameter
+    uint64 a0;
 };
+
+
+extern "C" void swtch(context *, context *);
+
 
 // Per-CPU state.
 class cpu {
-    thread* current_thread=nullptr;     // The process running on this cpu, or null.
-    struct context context;             // swtch() here to enter thread_scheduler().
+    process* current_process=nullptr;      // The process running on this cpu, or null.
+    context saved_context;               // swtch() here to enter thread_scheduler().
     int noff=0;                         // Depth of push_off() nesting.
     int base_interrupt_status = false;  // Were interrupts enabled before push_off()?
     int core_id;
+
+    uint8* temp_kstack;
 
 
     uint64 sample_duration[SAMPLE_SLOT_COUNT] {};
@@ -63,12 +76,7 @@ class cpu {
     public:
     cpu(){
     }
-    // cpu(int core_id) : core_id(core_id), start_cycle(r_time()) {}
-    void init(int core_id) {
-        this->core_id = core_id;
-        this->start_cycle = r_time();
-        __print();
-    }
+    void init(int core_id);
    public:
     //
     // the riscv Platform Level Interrupt Controller (PLIC).
@@ -130,6 +138,46 @@ class cpu {
     static cpu* my_cpu(){
         int id = current_id();
         return &cpus[id];
+    }
+
+    // static proc* get_current_process() {
+    //     cpu* c = my_cpu();
+    //     c->push_off();
+    //     proc* p = c->current_process;
+    //     c->pop_off();
+    //     return p;
+    // }
+
+    process* get_current_process(){
+        return current_process;
+    }
+
+    user_process* get_user_process(){
+        return (user_process*)current_process;
+    }
+
+    kernel_process* get_kernel_process(){
+        return (kernel_process*)current_process;
+    }
+
+    void set_process(process* p){
+        current_process = p;
+    }
+
+    void switch_back(context* c);
+    void save_context_and_run(std::function<void()> func);
+    void save_context_and_switch_to(context* next);
+
+    uint8* get_temp_kstack() {
+        return temp_kstack;
+    }
+
+    void sample(uint64 all, uint64 busy) {
+                    // record one sample
+
+        sample_duration[next_slot] = all;
+        busy_time[next_slot] = busy;
+        next_slot = (next_slot + 1) % SAMPLE_SLOT_COUNT;
     }
 
     

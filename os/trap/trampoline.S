@@ -12,8 +12,8 @@
 .globl trampoline
 trampoline:
 .align 4
-.globl uservec
-uservec:
+.globl user_vec
+user_vec:
 	#
         # trap.c sets stvec to point here, so
         # traps from user space start here,
@@ -72,8 +72,8 @@ uservec:
         sfence.vma zero, zero
         jr t0
 
-.globl userret
-userret:
+.globl user_ret
+user_ret:
         # userret(TRAPFRAME, pagetable)
         # switch from kernel to user.
         # usertrapret() calls here.

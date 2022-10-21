@@ -69,3 +69,7 @@ extern char boot_stack_bottom[];
 
 
 extern char _entry[]; // kernel.ld sets this to the entry address of kernel code.
+
+extern char trampoline[], user_vec[], user_ret[];
+
+extern "C" void kernel_vec();

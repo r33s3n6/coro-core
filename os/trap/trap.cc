@@ -2,7 +2,7 @@
 #include <mm/layout.h>
 #include <ccore/types.h>
 
-// #include <proc/proc.h>
+#include <proc/process.h>
 
 #include <utils/log.h>
 #include <utils/assert.h>
@@ -10,32 +10,25 @@
 #include "trap.h"
 
 
-extern char trampoline[], uservec[], userret[];
-extern "C" void kernelvec();
-
 void trap_init_hart() {
-    set_kerneltrap();
+    enable_kernel_trap();
     w_sie(r_sie() | SIE_SEIE | SIE_SSIE);
 }
 
-// set up to take exceptions and traps while in the kernel.
-void set_usertrap(void) {
-    intr_off();
-    w_stvec(((uint64)TRAMPOLINE + (uservec - trampoline)) & ~0x3); // DIRECT
-}
 
-void set_kerneltrap() {
-    w_stvec((uint64)kernelvec & ~0x3); // DIRECT
+void enable_kernel_trap() {
+    w_stvec((uint64)kernel_vec & ~0x3); // DIRECT
     intr_on();
 }
 
 void kernel_interrupt_handler(uint64 scause, uint64 stval, uint64 sepc) {
+    kernel_process* p;
     uint64 cause = scause & 0xff;
     int irq;
     switch (cause) {
-    case SupervisorTimer:
-        timer::set_next_timer();
-        //--  yield();
+    case SupervisorTimer: // kernel process timer, switch to next_context (scheduler)
+        p = cpu::my_cpu()->get_kernel_process();
+        cpu::my_cpu()->switch_back(p->get_context());
         break;
     case SupervisorExternal:
         irq = cpu::my_cpu()->plic_claim();
@@ -54,151 +47,7 @@ void kernel_interrupt_handler(uint64 scause, uint64 stval, uint64 sepc) {
         break;
     }
 }
-/*
-void user_interrupt_handler(uint64 scause, uint64 stval, uint64 sepc) {
-    int irq;
-    switch (scause & 0xff) {
-    case SupervisorTimer:
-        timer::set_next_timer();
-        //--  yield();
-        break;
-    case SupervisorExternal:
-        irq = cpu::my_cpu()->plic_claim();
-        if (irq == UART0_IRQ) {
-            infof("unexpected interrupt irq=UART0_IRQ");
 
-        } else if (irq == VIRTIO0_IRQ) {
-            //--  virtio_disk_intr();
-        } else if (irq) {
-            infof("unexpected interrupt irq=%d", irq);
-        }
-        if (irq) {
-
-            cpu::my_cpu()->plic_complete(irq);
-        }
-        break;
-    default:
-        infof("Unknown interrupt in user application: %p, stval = %p sepc = %p\n", scause, stval, sepc);
-        exit(-1);
-        break;
-    }
-}
-void user_exception_handler(uint64 scause, uint64 stval, uint64 sepc) {
-    struct proc *p = curr_proc();
-    struct trapframe *trapframe = p->trapframe;
-    switch (scause & 0xff) {
-    case UserEnvCall:
-        if (p->killed)
-            exit(-1);
-        trapframe->epc += 4;
-        intr_on();
-        //-- syscall();
-        break;
-    case StoreAccessFault:
-        infof("StoreAccessFault in user application: %p, stval = %p sepc = %p\n", scause, stval, sepc);
-        exit(-8);
-        break;
-    case StorePageFault:
-        infof("StorePageFault in user application: %p, stval = %p sepc = %p\n", scause, stval, sepc);
-        exit(-7);
-        break;
-    case InstructionAccessFault:
-        infof("InstructionAccessFault in user application: %p, stval = %p sepc = %p\n", scause, stval, sepc);
-        exit(-6);
-        break;
-    case InstructionPageFault:
-        infof("InstructionPageFault in user application: %p, stval = %p sepc = %p\n", scause, stval, sepc);
-        exit(-5);
-        break;
-    case LoadAccessFault:
-        infof("LoadAccessFault in user application: %p, stval = %p sepc = %p\n", scause, stval, sepc);
-        exit(-4);
-        break;
-    case LoadPageFault:
-        infof("LoadPageFault in user application: %p, stval = %p sepc = %p\n", scause, stval, sepc);
-        exit(-2);
-        break;
-    case IllegalInstruction:
-        errorf("IllegalInstruction in user application: %p, stval = %p sepc = %p\n", scause, stval, sepc);
-        exit(-3);
-        break;
-    default:
-        errorf("Unknown exception in user application: %p, stval = %p sepc = %p\n", scause, stval, sepc);
-        exit(-1);
-        break;
-    }
-}
-
-//
-// handle an interrupt, exception, or system call from user space.
-// called from trampoline.S
-//
-void usertrap() {
-    uint64 sepc = r_sepc();
-    uint64 sstatus = r_sstatus();
-    uint64 scause = r_scause();
-    uint64 stval = r_stval();
-
-    KERNEL_ASSERT(!intr_get(), "");
-    // debugcore("Enter user trap handler scause=%p", scause);
-
-    w_stvec((uint64)kernelvec & ~0x3); // DIRECT
-    // debugcore("usertrap");
-    // print_cpu(mycpu());
-
-    KERNEL_ASSERT((sstatus & SSTATUS_SPP) == 0, "usertrap: not from user mode");
-
-    if (scause & (1ULL << 63)) { // interrput = 1
-        user_interrupt_handler(scause, stval, sepc);
-    } else { // interrput = 0
-        user_exception_handler(scause, stval, sepc);
-    }
-    //-- pushtrace(0x3036);
-    usertrapret();
-}
-
-//
-// return to user space
-//
-void usertrapret() {
-    // debugcore("About to return to user mode");
-
-    // print_cpu(mycpu());
-    // we're about to switch the destination of traps from
-    // kerneltrap() to usertrap(), so turn off interrupts until
-    // we're back in user space, where usertrap() is correct.
-    // intr_off();
-    set_usertrap();
-    //-- pushtrace(0x3001);
-    struct proc *p = curr_proc();
-    struct trapframe *trapframe = p->trapframe;
-    trapframe->kernel_satp = r_satp();         // kernel page table
-    trapframe->kernel_sp = p->kstack + KSTACK_SIZE; // process's kernel stack
-    trapframe->kernel_trap = (uint64)usertrap;
-    trapframe->kernel_hartid = r_tp(); // hartid for cpuid()
-    // debugf("epc=%p",trapframe->epc);
-    w_sepc(trapframe->epc);
-    // set up the registers that trampoline.S's sret will use
-    // to get to user space.
-
-    // set S Previous Privilege mode to User.
-    uint64 x = r_sstatus();
-    x &= ~SSTATUS_SPP; // clear SPP to 0 for user mode
-    x |= SSTATUS_SPIE; // enable interrupts in user mode
-    w_sstatus(x);
-
-    // tell trampoline.S the user page table to switch to.
-    uint64 satp = MAKE_SATP(p->pagetable);
-
-    // jump to trampoline.S at the top of memory, which
-    // switches to the user page table, restores user registers,
-    // and switches to user mode with sret.
-    uint64 fn = TRAMPOLINE + (userret - trampoline);
-    // debugcore("return to user, satp=%p, trampoline=%p, kernel_trap=%p\n",satp, fn,  trapframe->kernel_trap);
-    ((void (*)(uint64, uint64))fn)(TRAPFRAME, satp);
-}
-
-*/
 
 void kernel_exception_handler(uint64 scause, uint64 stval, uint64 sepc) {
     switch (scause & 0xff) {
@@ -250,21 +99,19 @@ void kernel_exception_handler(uint64 scause, uint64 stval, uint64 sepc) {
 
 // interrupts and exceptions from kernel code go here via kernelvec,
 // on whatever the current kernel stack is.
-extern "C" void kerneltrap() {
+extern "C" void kernel_trap() {
     uint64 sepc = r_sepc();
     uint64 sstatus = r_sstatus();
     uint64 scause = r_scause();
     uint64 stval = r_stval();
-    //-- pushtrace(0x3000);
-    KERNEL_ASSERT(!intr_get(), "Interrupt can not be turned on in trap handler");
-    KERNEL_ASSERT((sstatus & SSTATUS_SPP) != 0, "kerneltrap: not from supervisor mode");
-    // debugcore("Enter kernel trap handler, scause=%p, sepc=%p", scause,sepc);
 
-    if (scause & (1ULL << 63)) // interrput
-    {
+    kernel_assert(!intr_get(), "Interrupt can not be turned on in trap handler");
+    kernel_assert((sstatus & SSTATUS_SPP) != 0, "kerneltrap: not from supervisor mode");
+
+
+    if (scause & (1ULL << 63)) { 
         kernel_interrupt_handler(scause, stval, sepc);
-    } else // exception
-    {
+    } else {
         kernel_exception_handler(scause, stval, sepc);
     }
 
@@ -276,3 +123,160 @@ extern "C" void kerneltrap() {
 
     // go back to kernelvec.S
 }
+
+
+
+
+
+void user_interrupt_handler(uint64 scause, uint64 stval, uint64 sepc) {
+    user_process* p = cpu::my_cpu()->get_user_process();
+    int irq;
+    switch (scause & 0xff) {
+    case SupervisorTimer:
+
+        p->pause();
+        
+        break;
+    case SupervisorExternal:
+        irq = cpu::my_cpu()->plic_claim();
+        if (irq == UART0_IRQ) {
+            infof("unexpected interrupt irq=UART0_IRQ");
+
+        } else if (irq == VIRTIO0_IRQ) {
+            //--  virtio_disk_intr();
+        } else if (irq) {
+            infof("unexpected interrupt irq=%d", irq);
+        }
+        if (irq) {
+            cpu::my_cpu()->plic_complete(irq);
+        }
+        break;
+    default:
+        infof("Unknown interrupt in user application: %p, stval = %p sepc = %p\n", scause, stval, sepc);
+        p->exit(-1);
+        break;
+    }
+}
+
+void user_exception_handler(uint64 scause, uint64 stval, uint64 sepc) {
+    user_process* p = cpu::my_cpu()->get_user_process();
+    trapframe *trapframe = p->get_trapframe();
+    switch (scause & 0xff) {
+    case UserEnvCall:
+        p->check_killed();
+        trapframe->epc += 4;
+
+        //-- syscall();
+        break;
+    case StoreAccessFault:
+        infof(      "StoreAccessFault in user application: %p, stval = %p sepc = %p\n", scause, stval, sepc);
+        p->exit(-8);
+        break;
+    case StorePageFault:
+        infof(        "StorePageFault in user application: %p, stval = %p sepc = %p\n", scause, stval, sepc);
+        p->exit(-7);
+        break;
+    case InstructionAccessFault:
+        infof("InstructionAccessFault in user application: %p, stval = %p sepc = %p\n", scause, stval, sepc);
+        p->exit(-6);
+        break;
+    case InstructionPageFault:
+        infof(  "InstructionPageFault in user application: %p, stval = %p sepc = %p\n", scause, stval, sepc);
+        p->exit(-5);
+        break;
+    case LoadAccessFault:
+        infof(       "LoadAccessFault in user application: %p, stval = %p sepc = %p\n", scause, stval, sepc);
+        p->exit(-4);
+        break;
+    case LoadPageFault:
+        infof(         "LoadPageFault in user application: %p, stval = %p sepc = %p\n", scause, stval, sepc);
+        p->exit(-2);
+        break;
+    case IllegalInstruction:
+        errorf(   "IllegalInstruction in user application: %p, stval = %p sepc = %p\n", scause, stval, sepc);
+        p->exit(-3);
+        break;
+    default:
+        errorf(    "Unknown exception in user application: %p, stval = %p sepc = %p\n", scause, stval, sepc);
+        p->exit(-1);
+        break;
+    }
+}
+
+//
+// handle an interrupt, exception, or system call from user space.
+// called from trampoline.S
+//
+void user_trap() {
+    uint64 sepc = r_sepc();
+    uint64 sstatus = r_sstatus();
+    uint64 scause = r_scause();
+    uint64 stval = r_stval();
+
+    kernel_assert(!intr_get(), "");
+
+    // these would be set in user_process::run
+
+    // w_sie(r_sie() & ~SIE_STIE); // disable timer interrupt while handling user trap
+    // enable_kernel_trap();
+
+    kernel_assert((sstatus & SSTATUS_SPP) == 0, "usertrap: not from user mode");
+
+    if (scause & (1ULL << 63)) { // interrput = 1
+        user_interrupt_handler(scause, stval, sepc);
+    } else { // interrput = 0
+        user_exception_handler(scause, stval, sepc);
+    }
+
+    user_trap_ret();
+}
+
+//
+// return to user space
+//
+void user_trap_ret() {
+
+    // we're about to switch the destination of traps from
+    // kernel_trap() to user_trap(), so turn off interrupts until
+    // we're back in user space, where usertrap() is correct.
+    intr_off();
+    w_stvec(((uint64)TRAMPOLINE + (user_vec - trampoline)) & ~0x3); // DIRECT
+
+    cpu* c = cpu::my_cpu();
+
+    user_process *p = (user_process*)c->get_current_process();
+
+    trapframe *trapframe = p->get_trapframe();
+
+    // set next trap context
+    trapframe->kernel_satp =   r_satp();         // kernel page table
+    trapframe->kernel_sp =     (uint64)cpu::my_cpu()->get_temp_kstack();
+    trapframe->kernel_trap =   (uint64)user_trap;
+    trapframe->kernel_hartid = r_tp();         // save hartid
+
+    // set up the registers that trampoline.S's sret will use
+    // to get to user space.
+    w_sepc(trapframe->epc);
+
+    // set S Previous Privilege mode to User.
+    uint64 x = r_sstatus();
+    x &= ~SSTATUS_SPP; // clear SPP to 0 for user mode
+    x |= SSTATUS_SPIE; // enable interrupts in user mode
+    w_sstatus(x);
+
+    w_sie(r_sie() | SIE_STIE | SIE_SSIE | SIE_SEIE); // enable all interrupts in user mode
+    timer::set_next_timer();
+
+    // tell trampoline.S the user page table to switch to.
+    uint64 satp = MAKE_SATP(p->get_pagetable());
+
+    // jump to trampoline.S at the top of memory, which
+    // switches to the user page table, restores user registers,
+    // and switches to user mode with sret.
+    uint64 fn = TRAMPOLINE + (user_ret - trampoline);
+
+    ((void (*)(uint64, uint64))fn)(TRAPFRAME, satp);
+}
+
+
+

@@ -9,4 +9,5 @@ void panic(const char *s)
 {
     __printf("panic: %s\n", s);
     shutdown();
+    __builtin_unreachable();
 }

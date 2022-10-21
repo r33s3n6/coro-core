@@ -4,7 +4,7 @@
 void yield(void) {
     pushtrace(0x3005);
     struct proc *p = curr_proc();
-    KERNEL_ASSERT(p != nullptr, "yield() has no current proc");
+    kernel_assert(p != nullptr, "yield() has no current proc");
     acquire(&p->lock);
     pushtrace(0x3035);
     p->state = RUNNABLE;

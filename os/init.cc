@@ -3,6 +3,8 @@
 #include <mm/vmem.h>
 #include <mm/layout.h>
 
+#include <proc/process.h>
+#include <proc/scheduler.h>
 
 #include <sbi/sbi.h>
 #include <utils/log.h>
@@ -49,17 +51,38 @@ void init_globals(){
 }
 
 extern int kernel_coroutine_test();
+extern void print_something();
+
 
 // test code
-void scheduler(){
-    if (cpu::current_id() == 0){
-        infof("scheduler: run kernel_coroutine_test");
-        int ret = kernel_coroutine_test();
-        infof("kernel_coroutine_test returned %d\n", ret);
+void test_coroutine(){
 
-    }else{
-        infof("cpu %d is idle", cpu::current_id());
+    infof("scheduler: run kernel_coroutine_test");
+    int ret = kernel_coroutine_test();
+    infof("kernel_coroutine_test returned %d\n", ret);
+
+}
+
+void idle(){
+    while (true){
+        asm volatile("wfi");
     }
+}
+
+void init(){
+    shared_ptr<process> test_proc = make_shared<kernel_process>(kernel_task_queue.alloc_pid(), test_coroutine);
+    test_proc->set_name("test_coroutine");
+    kernel_task_queue.push(test_proc);
+
+    for(int i=0;i<10;i++){
+        shared_ptr<process> proc = make_shared<kernel_process>(kernel_task_queue.alloc_pid(), print_something);
+        proc->set_name(("test" + std::to_string(i)).c_str());
+        kernel_task_queue.push(proc);
+    }
+
+    return;
+
+
 }
 
 // do not use any global class object here
@@ -106,7 +129,7 @@ extern "C" void kernel_init(uint64 hartid)
         for (uint64 i = 0; i < NCPU; i++) {
             if (i != hartid) // not this hart
             {
-                infof("[ccore] start hart %d", (uint32)i);
+                infof("start hart %d", (uint32)i);
                 start_hart(i, (uint64)_entry, 0);
             }
         }
@@ -115,14 +138,39 @@ extern "C" void kernel_init(uint64 hartid)
 
     cpu* my_cpu = cpu::my_cpu();
     my_cpu->boot_hart();
-    infof("[ccore] hart %d starting", hartid);
+    infof("hart %d starting", hartid);
+
+    // create idle process
     
+    infof("create idle process");
+    shared_ptr<process> idle_proc = make_shared<kernel_process>(hartid+1, idle);
+    idle_proc->binding_core = hartid;
+
+    infof("push idle process");
+    kernel_task_queue.push(idle_proc);
+
+    if (hartid == 0){
+        // create init process
+        infof("create init process");
+        shared_ptr<process> init_proc = make_shared<kernel_process>(0, init);
+        kernel_task_queue.push(init_proc);
+    }
+
+    kernel_process_scheduler[hartid].set_queue(&kernel_task_queue);
+
+    infof("[%d] wait for other hart", hartid);
+
+    // wait for all hart started (TODO: seems useless)
     for(int i=0;i<NCPU;i++){
         while (!cpus[i].is_booted());
     }
-
     // all hart started
-    scheduler();
+    
+
+
+    
+    infof("start scheduler");
+    kernel_process_scheduler[hartid].run();
 
     
     cpu* current_cpu = cpu::my_cpu();

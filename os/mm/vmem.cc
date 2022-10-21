@@ -145,19 +145,13 @@ uint64 virt_addr_to_physical(pagetable_t pagetable, uint64 va) {
     return page | (va & 0xFFFULL);
 }
 
-// add a mapping to the kernel page table.
-// only used when booting.
-// does not flush TLB or enable paging.
-void kvmmap(pagetable_t kpgtbl, uint64 va, uint64 pa, uint64 sz, int perm) {
-    if (mappages(kpgtbl, va, sz, pa, perm) != 0)
-        panic("kvmmap");
-}
+
 
 // Create PTEs for virtual addresses starting at va that refer to
 // physical addresses starting at pa. va and size might not
 // be page-aligned. Returns 0 on success, -1 if walk() couldn't
 // allocate a needed page-table page.
-int mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm) {
+int mappages(pagetable_t pagetable, uint64 va, uint64 pa, uint64 size, int perm) {
     uint64 a, last;
     pte_t *pte;
 
@@ -184,6 +178,18 @@ int mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
     }
     // debugf("map page cnt=%d", cnt);
     return 0;
+}
+
+// add a mapping to the kernel page table.
+// only used when booting.
+// does not flush TLB or enable paging.
+void kvmmap(pagetable_t kpgtbl, uint64 va, uint64 pa, uint64 sz, int perm) {
+    if (mappages(kpgtbl, va, pa, sz, perm) != 0)
+        panic("kvmmap");
+}
+
+int uvmmap(pagetable_t pagetable, uint64 va, uint64 pa, uint64 size, int perm) {
+    return mappages(pagetable, va, pa, size, perm);
 }
 
 // Create PTEs for virtual addresses starting at va that refer to
@@ -213,18 +219,28 @@ int map1page(pagetable_t pagetable, uint64 va, uint64 pa, int perm) {
     return size;
 }
 
-// Remove npages of mappings starting from va. va must be
+// Remove npages of mappings starting from va. va might not be
 // page-aligned. The mappings must exist.
 // Optionally free the physical memory.
-void uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free) {
-    uint64 a;
+void uvmunmap(pagetable_t pagetable, uint64 va, uint64 size, int do_free) {
+    uint64 a, last;
     pte_t *pte;
-    debugf("va=%p npages=%d do_free=%d", va, npages, do_free);
+
+    a = PGROUNDDOWN(va);
+    last = PGROUNDDOWN(va + size - 1);
+
+    if(a!=va || last!=va+size-1) {
+        warnf("uvmunmap: not aligned");
+    }
+        
+
+    debugf("va=%p size=%d do_free=%d", va, size, do_free);
     if ((va % PGSIZE) != 0)
         panic("uvmunmap: not aligned");
 
-    for (a = va; a < va + npages * PGSIZE; a += PGSIZE)
+    for (;;)
     {
+
         if ((pte = walk(pagetable, a, false)) == 0)
             panic("uvmunmap: walk");
         if ((*pte & PTE_V) == 0)
@@ -237,7 +253,13 @@ void uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free) {
             kernel_allocator.free_page((void *)pa);
         }
         *pte = 0;
+
+        if (a == last)
+            break;
+        a += PGSIZE;
+
     }
+
 }
 
 // create an empty user page table.
@@ -302,6 +324,9 @@ uint64 uvmdealloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz) {
 // Recursively free page-table pages.
 // All leaf mappings must already have been removed.
 void free_pagetable_pages(pagetable_t pagetable) {
+    if(!pagetable)
+        return;
+
     // there are 2^9 = 512 PTEs in a page table.
     for (int i = 0; i < 512; i++)
     {
@@ -321,6 +346,7 @@ void free_pagetable_pages(pagetable_t pagetable) {
     kernel_allocator.free_page(pagetable);
 }
 
+/*
 // Free user memory pages,
 // then free page-table pages.
 // total_size used for checking
@@ -328,19 +354,19 @@ void free_user_mem_and_pagetables(pagetable_t pagetable, uint64 total_size) {
 
     // free ustack
     debug_core("free_user_mem_and_pagetables free stack");
-    uvmunmap(pagetable, USER_STACK_BOTTOM - USTACK_SIZE, USTACK_SIZE / PGSIZE, true);
+    uvmunmap(pagetable, USER_STACK_BOTTOM - USTACK_SIZE, USTACK_SIZE, true);
     total_size -= USTACK_SIZE;
     
     // free bin
     debug_core("free_user_mem_and_pagetables free bin");
-    uvmunmap(pagetable, USER_TEXT_START, PGROUNDUP(total_size) / PGSIZE, true);
+    uvmunmap(pagetable, USER_TEXT_START, PGROUNDUP(total_size), true);
     total_size -= PGROUNDUP(total_size);
 
-    KERNEL_ASSERT(total_size==0, "");
+    kernel_assert(total_size==0, "");
 
     // free page-table pages
     free_pagetable_pages(pagetable);
-}
+}*/
 
 // mark a PTE invalid for user access.
 // used by exec for the user stack guard page.

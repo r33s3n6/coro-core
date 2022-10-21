@@ -87,7 +87,7 @@ void balloc(int used)
     uchar buf[BSIZE];
     int i;
     // printf("balloc: first %d blocks have been allocated\n", used);
-    KERNEL_ASSERT(used < BSIZE * 8, "");
+    kernel_assert(used < BSIZE * 8, "");
     memset(buf, 0, BSIZE);
     for (i = 0; i < used; i++)
     {
@@ -113,7 +113,7 @@ void iappend(uint inum, void *data, int data_len)
     while (data_len > 0)
     {
         fbn = off / BSIZE;
-        KERNEL_ASSERT(fbn < MAXFILE, "");
+        kernel_assert(fbn < MAXFILE, "");
         if (fbn < NDIRECT)
         {
             if (din.addrs[fbn] == 0)
@@ -172,7 +172,7 @@ void make_ram_fs()
     char buf[BSIZE];
     struct dinode din;
 
-    KERNEL_ASSERT((BSIZE % sizeof(struct dinode)) == 0, "");
+    kernel_assert((BSIZE % sizeof(struct dinode)) == 0, "");
 
     // 1 fs block = 1 disk sector
     nmeta = 2 + ninodeblocks + nbitmap;
@@ -198,7 +198,7 @@ void make_ram_fs()
     wsect(1, buf);
 
     rootino = ialloc(T_DIR);
-    KERNEL_ASSERT(rootino == ROOTINO, "");
+    kernel_assert(rootino == ROOTINO, "");
 
     memset(&de, 0, sizeof(de));
     de.inum = (rootino);
@@ -248,7 +248,7 @@ void ram_disk_rw(struct buf *b, int write)
 {
 
     tracecore("ram_disk_rw dev=%d, blockno=%d, write=%d", b->dev, b->blockno, write);
-    KERNEL_ASSERT(b->dev == ROOTDEV, "wrong device number");
+    kernel_assert(b->dev == ROOTDEV, "wrong device number");
     acquire(&ramdisk_lock);
     uint blockno = b->blockno;
 

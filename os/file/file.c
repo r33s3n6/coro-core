@@ -49,7 +49,7 @@ void fileinit() {
 void fileclose(struct file *f) {
     struct file ff;
     acquire(&filepool.lock);
-    KERNEL_ASSERT(f->ref >= 1, "file reference should be at least 1");
+    kernel_assert(f->ref >= 1, "file reference should be at least 1");
     --f->ref;
     if (f->ref > 0) {
         // some other process is using it
@@ -140,7 +140,7 @@ struct inode * create(char *path, short type, short major, short minor) {
 struct file *
 filedup(struct file *f) {
     acquire(&filepool.lock);
-    KERNEL_ASSERT(f->ref >= 1, "file reference should be at least 1");
+    kernel_assert(f->ref >= 1, "file reference should be at least 1");
     f->ref++;
     release(&filepool.lock);
     return f;
@@ -223,7 +223,7 @@ ssize_t filewrite(struct file *f, void* src_va, size_t len) {
     } else if (f->type == FD_DEVICE) {
         if (f->major < 0 || f->major >= NDEV || !device_rw_handler[f->major].write)
             return -1;
-        ret = device_rw_handler[f->major].write((char*)src_va, len, TRUE);
+        ret = device_rw_handler[f->major].write((char*)src_va, len, true);
     } else if (f->type == FD_INODE) {
         // write a few blocks at a time to avoid exceeding
         // the maximum log transaction size, including
@@ -270,10 +270,10 @@ ssize_t fileread(struct file *f, void* dst_va, size_t len) {
     } else if (f->type == FD_DEVICE) {
         if (f->major < 0 || f->major >= NDEV || !device_rw_handler[f->major].read)
             return -1;
-        r = device_rw_handler[f->major].read( dst_va, len, TRUE);
+        r = device_rw_handler[f->major].read( dst_va, len, true);
     } else if (f->type == FD_INODE) {
         ilock(f->ip);
-        if ((r = readi(f->ip, TRUE, dst_va, f->off, len)) > 0)
+        if ((r = readi(f->ip, true, dst_va, f->off, len)) > 0)
             f->off += r;
         iunlock(f->ip);
     } else {

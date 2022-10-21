@@ -81,14 +81,14 @@ int dirlink(struct inode *dp, char *name, uint inum)
     // Look for an empty dirent.
     for (off = 0; off < dp->size; off += sizeof(de))
     {
-        if (readi(dp, FALSE, &de, off, sizeof(de)) != sizeof(de))
+        if (readi(dp, false, &de, off, sizeof(de)) != sizeof(de))
             panic("dirlink read");
         if (de.inum == 0)
             break;
     }
     strncpy(de.name, name, DIRSIZ);
     de.inum = inum;
-    if (writei(dp, FALSE, &de, off, sizeof(de)) != sizeof(de))
+    if (writei(dp, false, &de, off, sizeof(de)) != sizeof(de))
         panic("dirlink");
     return 0;
 }

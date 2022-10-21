@@ -52,7 +52,7 @@ void spinlock::lock() {
 
 // Release the lock.
 void spinlock::unlock() {
-    // KERNEL_ASSERT(holding(slock), "a core should hold the lock if it wants to release it");
+    // kernel_assert(holding(slock), "a core should hold the lock if it wants to release it");
     if (!holding()) {
         kernel_console_logger.printf<false>(
                     logger::log_level::ERROR, 

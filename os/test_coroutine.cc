@@ -71,7 +71,7 @@ task<void> test_coroutine4(int* i) noexcept {
 
     co_infof("test_coroutine4: t_promise_result:%d, has_value?:%d",*value, value.has_value());
 
-    KERNEL_ASSERT(*value == 35, "test_coroutine4: value should be 35");
+    kernel_assert(*value == 35, "test_coroutine4: value should be 35");
 
     *i+=*value;
     // i == 39
@@ -135,7 +135,7 @@ task<void> test_coroutine(int* i) {
         co_infof("test_coroutine: after test_coroutine1, failed?:%d", !x);
     }
     //t.destroy();
-    KERNEL_ASSERT(*i==3, "test_coroutine: i should be 3");
+    kernel_assert(*i==3, "test_coroutine: i should be 3");
     ++(*i);
     if (!x) {
         co_return task_fail;
@@ -172,7 +172,7 @@ task<void> test_stack_overflow(int x){
         co_await test_stack_overflow_generator(i);
     }
     void* ptr2 = get_stack_pointer();
-    KERNEL_ASSERT(ptr1==ptr2, "stack check failed(tail call)");
+    kernel_assert(ptr1==ptr2, "stack check failed(tail call)");
     co_return task_ok;
 }
 
@@ -191,7 +191,7 @@ task<void> test_stack_overflow2(int x){
     }
 
     void* ptr2 = get_stack_pointer();
-    KERNEL_ASSERT(ptr1==ptr2, "stack check failed(tail call)");
+    kernel_assert(ptr1==ptr2, "stack check failed(tail call)");
     co_return task_ok;
 }
 
@@ -300,7 +300,7 @@ task<void> test_logger(std::string log_str){
 extern scheduler kernel_scheduler;
 int kernel_coroutine_test() {
     // assert(false,"assert test");
-    KERNEL_ASSERT(global_test.i == 0xf, "global_test.i should be 0xf");
+    kernel_assert(global_test.i == 0xf, "global_test.i should be 0xf");
     int test;
     test = 0;
 
@@ -346,7 +346,7 @@ int kernel_coroutine_test() {
     kernel_scheduler.start();
 
     kernel_console_logger.printf("main: test: %d\n", test);
-    KERNEL_ASSERT(test==39, "test should be 3+1+35");
+    kernel_assert(test==39, "test should be 3+1+35");
     return test;
 }
 

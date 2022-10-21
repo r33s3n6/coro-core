@@ -50,6 +50,10 @@ class allocator {
 
 
     void free_page(void* pa){
+        if (!pa) {
+            return;
+        }
+
         if (((uint64)pa % PGSIZE) != 0 || (pa < start || pa >= end)) {
             panic("free_page");
         }

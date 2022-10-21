@@ -234,7 +234,7 @@ void iput(struct inode *ip) {
 // Returns ip to enable ip = idup(ip1) idiom.
 struct inode *
 idup(struct inode *ip) {
-    KERNEL_ASSERT(ip != nullptr, "inode can not be nullptr");
+    kernel_assert(ip != nullptr, "inode can not be nullptr");
     acquire(&itable.lock);
     ip->ref++;
     release(&itable.lock);

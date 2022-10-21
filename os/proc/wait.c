@@ -12,7 +12,7 @@ int wait(int pid, int *wstatus_va)
     for (;;)
     {
 
-        bool havekids = FALSE;
+        bool havekids = false;
         for (maybe_child = pool; maybe_child < &pool[NPROC]; maybe_child++)
         {
             if (maybe_child->parent == p)
@@ -22,7 +22,7 @@ int wait(int pid, int *wstatus_va)
 
                 if (pid < 0 || maybe_child->pid == pid) // this is one of the target
                 {
-                    havekids = TRUE;
+                    havekids = true;
                     if (maybe_child->state == ZOMBIE)
                     {
                         // Found one.

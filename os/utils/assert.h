@@ -9,10 +9,10 @@
 #define STRINGIZE(x) STRINGIZE_DETAIL(x)
 
 /**
- * @brief usage: KERNEL_ASSERT(var == 1, "var should be 1");
+ * @brief usage: kernel_assert(var == 1, "var should be 1");
  * 
  */
-#define KERNEL_ASSERT(exp, msg) \
+#define kernel_assert(exp, msg) \
     do {                   \
         if (!(exp))        \
             panic("Assert failed in [" __FILE__ ":" STRINGIZE(__LINE__) "]: \"" #exp "\" " msg);         \

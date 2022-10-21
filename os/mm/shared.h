@@ -1,7 +1,9 @@
 #if !defined(SHARED_H)
 #define SHARED_H
 
-#include <ucore/ucore.h>
+#include <ccore/types.h>
+
+#include <arch/riscv.h>
 
 #define MAX_SHARED_NAME (64)    
 #define MAX_SHARED_MEM_INSTANCE (256) // system level

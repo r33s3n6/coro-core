@@ -1,5 +1,5 @@
-#ifndef TRAP_H
-#define TRAP_H
+#ifndef TRAP_TRAP_H
+#define TRAP_TRAP_H
 
 #include <ccore/types.h>
 
@@ -82,7 +82,10 @@ enum Interrupt {
     SupervisorExternal,
 };
 
+
+
 void trap_init_hart();
-void set_kerneltrap();
+void enable_kernel_trap();
+void user_trap_ret();
 
 #endif // TRAP_H
