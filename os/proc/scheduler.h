@@ -19,7 +19,7 @@ class task_queue {
     int next_pid = NCPU + 1; // skip idle process and init process
 public:
     shared_ptr<process> pop();
-    void push(shared_ptr<process> proc);
+    void push(const shared_ptr<process>& proc);
     int alloc_pid() {
         auto guard = make_lock_guard(pid_lock);
         return next_pid++;

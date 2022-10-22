@@ -54,7 +54,7 @@ void* operator new(std::size_t size) {
         panic("new failed");
     }
     
-    // __debug_core("new size %d, ptr: %p", size, ptr);
+    //debug_core("new size %d, ptr: %p", size, ptr);
     return ptr;
 }
 

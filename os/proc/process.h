@@ -81,13 +81,9 @@ protected:
     void sleep() override;
     void wake_up() override;
 
-    void set_name(const char* name) {
-        strncpy(this->name, name, PROC_NAME_MAX);
-    }
+    void set_name(const char* name);
 
-    const char* get_name() {
-        return name;
-    }
+    const char* get_name();
 
 };
 

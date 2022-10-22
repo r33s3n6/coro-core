@@ -67,7 +67,7 @@ shared_ptr<process> task_queue::pop() {
     return ret;
 }
 
-void task_queue::push(shared_ptr<process> proc) {
+void task_queue::push(const shared_ptr<process>& proc) {
     auto guard = make_lock_guard(lock);
     queue.push_back(proc);
 }

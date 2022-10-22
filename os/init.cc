@@ -95,6 +95,8 @@ extern "C" void kernel_init(uint64 hartid)
 
 	//magic = 0xbeefdead;
 
+
+
     // set pagetables 
     if (is_first){
         is_first = false;
@@ -141,22 +143,29 @@ extern "C" void kernel_init(uint64 hartid)
     infof("hart %d starting", hartid);
 
     // create idle process
-    
-    infof("create idle process");
-    shared_ptr<process> idle_proc = make_shared<kernel_process>(hartid+1, idle);
-    idle_proc->binding_core = hartid;
-
-    infof("push idle process");
-    kernel_task_queue.push(idle_proc);
-
     if (hartid == 0){
+        infof("create idle process");
+        shared_ptr<process> idle_proc = make_shared<kernel_process>(hartid+1, idle);
+        idle_proc->binding_core = hartid;
+    
+        infof("push idle process");
+        kernel_task_queue.push(idle_proc);
+
+    
         // create init process
         infof("create init process");
         shared_ptr<process> init_proc = make_shared<kernel_process>(0, init);
         kernel_task_queue.push(init_proc);
     }
 
-    kernel_process_scheduler[hartid].set_queue(&kernel_task_queue);
+    
+
+    if (hartid == 0){
+
+        infof("[%d] init scheduler", hartid);
+        kernel_process_scheduler[hartid].set_queue(&kernel_task_queue);
+    }
+    
 
     infof("[%d] wait for other hart", hartid);
 
@@ -168,10 +177,10 @@ extern "C" void kernel_init(uint64 hartid)
     
 
 
-    
-    infof("start scheduler");
-    kernel_process_scheduler[hartid].run();
-
+    if (hartid == 0){
+        infof("start scheduler");
+        kernel_process_scheduler[hartid].run();
+    }
     
     cpu* current_cpu = cpu::my_cpu();
     current_cpu->halt();

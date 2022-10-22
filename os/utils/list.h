@@ -42,7 +42,7 @@ class list {
         delete tail;
     }
 
-    void push_back(data_t data) {
+    void push_back(const data_t& data) {
         node* new_node = new node;
         new_node->data = data;
         new_node->next = tail;
@@ -53,7 +53,7 @@ class list {
         _size++;
     }
 
-    void push_front(data_t data) {
+    void push_front(const data_t& data) {
         node* new_node = new node;
         new_node->data = data;
         new_node->next = head->next;

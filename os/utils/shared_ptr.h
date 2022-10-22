@@ -7,12 +7,12 @@ struct ref_count_t {
     uint32 count;
     spinlock lock{"shared_ptr.lock"};
     ref_count_t(int init) : count(init) {}
-    void inc(){
+    void inc() {
         lock.lock();
         count++;
         lock.unlock();
     }
-    uint32 dec(){
+    uint32 dec() {
         lock.lock();
         int temp = --count;
         lock.unlock();
@@ -22,8 +22,6 @@ struct ref_count_t {
 
 template <typename T>
 class shared_ptr {
-    
-
    private:
     T* ptr;
     ref_count_t* ref_count;
@@ -32,7 +30,6 @@ class shared_ptr {
     shared_ptr() : ptr(nullptr), ref_count(nullptr) {}
 
     shared_ptr(T* ptr) : ptr(ptr), ref_count(new ref_count_t(1)) {}
-
 
     template <typename other_type>
     friend class shared_ptr;
@@ -43,13 +40,15 @@ class shared_ptr {
     shared_ptr(const shared_ptr<other_type>& other) noexcept
 
         : ptr(other.ptr), ref_count(other.ref_count) {
-        ref_count->inc();
+        if (ptr) {
+            ref_count->inc();
+        }
     }
 
     template <typename other_type>
     shared_ptr& operator=(const shared_ptr<other_type> other) noexcept {
-        if(ptr){
-            if(ref_count->dec() == 0){
+        if (ptr) {
+            if (ref_count->dec() == 0) {
                 delete ptr;
                 delete ref_count;
             }
@@ -57,12 +56,15 @@ class shared_ptr {
 
         ptr = other.ptr;
         ref_count = other.ref_count;
-        ref_count->inc();
+
+        if (ptr) {
+            ref_count->inc();
+        }
         return *this;
     }
 
     ~shared_ptr() {
-        if(ptr){
+        if (ptr) {
             if (ref_count->dec() == 0) {
                 delete ptr;
                 delete ref_count;
@@ -78,10 +80,9 @@ class shared_ptr {
 
     bool operator!=(const shared_ptr& other) { return ptr != other.ptr; }
 
-    bool operator!() { return ptr; }
+    bool operator!() { return !ptr; }
 
     void reset(T* ptr) {
-
         if (this->ptr) {
             if (ref_count->dec() == 0) {
                 delete this->ptr;
@@ -96,7 +97,6 @@ class shared_ptr {
         } else {
             ref_count = nullptr;
         }
-
     }
 
     T* get() { return ptr; }

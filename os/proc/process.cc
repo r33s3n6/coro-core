@@ -8,6 +8,16 @@
 #include <utils/assert.h>
 
 
+void process::set_name(const char* name) {
+    warnf("%p:set name %s\n",this, name);
+    strncpy(this->name, name, PROC_NAME_MAX);
+}
+
+const char* process::get_name() {    
+    warnf("%p:get name %p\n",this, name);
+    return name;
+}
+
 void process::sleep() {
 
     lock.lock();
