@@ -58,8 +58,10 @@ int sbi_console_getchar() {
     return sbi_call(SBI_CONSOLE_GETCHAR, 0, 0, 0);
 }
 
-void shutdown() {
+extern "C" 
+__attribute__((noreturn)) void shutdown() {
     sbi_call(SBI_SHUTDOWN, 0, 0, 0);
+	__builtin_unreachable();
 }
 
 void set_timer(uint64 stime) {

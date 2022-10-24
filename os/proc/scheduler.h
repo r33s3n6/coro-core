@@ -18,12 +18,13 @@ class task_queue {
     spinlock pid_lock {"task_queue.pid_lock"};
     int next_pid = NCPU + 1; // skip idle process and init process
 public:
-    shared_ptr<process> pop();
+    shared_ptr<process> pop(int core_id);
     void push(const shared_ptr<process>& proc);
     int alloc_pid() {
         auto guard = make_lock_guard(pid_lock);
         return next_pid++;
     }
+    
 };
 
 class process_scheduler {
@@ -32,6 +33,7 @@ class process_scheduler {
     // process_scheduler::process_scheduler(task_queue* q);
     void set_queue(task_queue* q) { shared_queue = q; }
     void run();
+    shared_ptr<process> last_choice;
 };
 
 extern task_queue kernel_task_queue;

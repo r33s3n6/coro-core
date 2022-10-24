@@ -7,22 +7,26 @@
 
 #include <mm/allocator.h>
 
-#include <trap/trap.h>
 #include <mm/vmem.h>
+#include <trap/trap.h>
 
 #include <utils/assert.h>
 
 #include <proc/process.h>
 
-
 cpu cpus[NCPU];
 
-uint8 __attribute__((aligned(16))) 
-__temp_kstack[NCPU][KSTACK_SIZE];
+uint8 __attribute__((aligned(16))) __temp_kstack[NCPU][KSTACK_SIZE];
 
-void init_cpus(){
-    for (int i = 0; i < NCPU; i++)
-    {
+void context::print() {
+    debug_core(
+        "context: ra: %p, sp: %p, s0: %p, s1: %p, s2: %p, s3: %p, s4: %p, s5: "
+        "%p, s6: %p, s7: %p, s8: %p, s9: %p, s10: %p, s11: %p, a0: %p",
+        ra, sp, s0, s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11, a0);
+}
+
+void init_cpus() {
+    for (int i = 0; i < NCPU; i++) {
         cpus[i].init(i);
     }
 }
@@ -30,130 +34,119 @@ void init_cpus(){
 void cpu::init(int core_id) {
     this->core_id = core_id;
     this->start_cycle = r_time();
-    this->temp_kstack = (uint8*)__temp_kstack[core_id];
+    this->temp_kstack = (uint8*)__temp_kstack[core_id] + KSTACK_SIZE;
     __print();
 }
 
-task<void> cpu::print(){
+task<void> cpu::print() {
     co_await kernel_logger.printf<false>("* ---------- CPU INFO ----------\n");
     co_await kernel_logger.printf<false>("* print by: %d\n", current_id());
     co_await kernel_logger.printf<false>("* Core ID: %d\n", core_id);
-    co_await kernel_logger.printf<false>("* Current Process: %p\n", current_process);
-    co_await kernel_logger.printf<false>("* Base Interrupt Status: %d\n", base_interrupt_status);
-    co_await kernel_logger.printf<false>("* Number of Off: %d\n", noff);
-    co_await kernel_logger.printf<false>("* ---------- CPU INFO ----------\n\n");
+    co_await kernel_logger.printf<false>("* Current Process: %p\n",
+                                         current_process);
+    co_await kernel_logger.printf<false>(
+        "* ---------- CPU INFO ----------\n\n");
 }
 
-
-void cpu::__print(){
+void cpu::__print() {
     kernel_console_logger.printf<false>("* ---------- CPU INFO ----------\n");
     kernel_console_logger.printf<false>("* print by: %d\n", current_id());
     kernel_console_logger.printf<false>("* Core ID: %d\n", core_id);
-    kernel_console_logger.printf<false>("* Current Process: %p\n", current_process);
-    kernel_console_logger.printf<false>("* Base Interrupt Status: %d\n", base_interrupt_status);
-    kernel_console_logger.printf<false>("* Number of Off: %d\n", noff);
+    kernel_console_logger.printf<false>("* Current Process: %p\n",
+                                        current_process);
+    kernel_console_logger.printf<false>("* Temp Kernel Stack: %p\n",
+                                        temp_kstack);
     kernel_console_logger.printf<false>("* ---------- CPU INFO ----------\n\n");
 }
 
-// push_off/pop_off are like intr_off()/intr_on() except that they are matched:
-// it takes two pop_off()s to undo two push_off()s.  Also, if interrupts
-// are initially off, then push_off, pop_off leaves them off.
-void cpu::pop_off(){
-    if (intr_get())
-        panic("pop_off - interruptible");
-    if (noff < 1) {
-        // __print();
-        panic("pop_off");
-    }
-        
-    noff -= 1;
-    if (noff == 0 && base_interrupt_status) {
-        intr_on();
-    }
+cpu_ref cpu::my_cpu() {
+    return {cpu_ref::_Construct::_Token};
 }
 
-void cpu::push_off(){
-    int old = intr_get();
-
-    intr_off();
-    if (noff == 0) {
-        base_interrupt_status = old;
-    }
-    noff += 1;
-}
-
-void cpu::halt(){
+void cpu::halt() {
     this->halted = true;
     if (core_id == 0) {
         debug_core("waiting for other cores to halt");
         for (int i = 0; i < NCPU; i++) {
-            while (!cpus[i].halted);
+            while (!cpus[i].halted)
+                ;
         }
         __fini_cxx();
 
         check_memory();
         __infof("[ccore] All finished. Shutdown ...");
         shutdown();
-    }
-    else{
-        while(1){
+    } else {
+        while (1) {
             asm volatile("wfi");
         }
     }
-    
 }
 
-void cpu::boot_hart(){
-    kvminithart(); // turn on paging
+void cpu::boot_hart() {
+    kvminithart();  // turn on paging
     trap_init_hart();
-    plic_init_hart(); // ask PLIC for device interrupts
-    booted=true;
+    plic_init_hart();  // ask PLIC for device interrupts
+    booted = true;
 }
 
-
-
+void cpu::sample(uint64 all, uint64 busy) {
+    // record one sample
+    
+    debug_core("sample: %l (1/1000)", busy*1000/all);
+    sample_duration[next_slot] = all;
+    busy_time[next_slot] = busy;
+    next_slot = (next_slot + 1) % SAMPLE_SLOT_COUNT;
+}
 
 static void __function_caller(std::function<void()>* func_ptr) {
+    kernel_assert(!cpu::local_irq_on(), "local_irq should be disabled");
     (*func_ptr)();
-    
-    intr_off();
-    cpu::my_cpu()->switch_back(nullptr);
+
+    cpu::__my_cpu()->switch_back(nullptr);
 
     __builtin_unreachable();
 }
 
-
-
-
 void cpu::switch_back(context* current) {
-    kernel_assert(!intr_get(), "interrupt should be off"); // interrput is off
-    int __base_interrupt_status = base_interrupt_status; // save
-    swtch(current, &saved_context); // will goto scheduler()
-    base_interrupt_status = __base_interrupt_status;
+    kernel_assert(
+        !cpu::local_irq_on() || (cpu::local_irq_on() && !(r_sie() & SIE_STIE)),
+        "timer interrupt should be off");  // interrput is off
+
+    // debug_core("switch back");
+    // saved_context.print();
+    swtch(current, &saved_context);  // will goto scheduler()
+
+    // debug_core("switch_back: back");
+    // current->print();
 }
-
-
 
 void cpu::save_context_and_switch_to(context* to) {
-    kernel_assert(!intr_get(), "interrupt should be off"); // interrput is off
-    int __base_interrupt_status = base_interrupt_status; // save
-    swtch(&saved_context, to); 
-    base_interrupt_status = __base_interrupt_status;
-}
+    kernel_assert(
+        !cpu::local_irq_on() || (cpu::local_irq_on() && !(r_sie() & SIE_STIE)),
+        "timer interrupt should be off");  // interrput is off
 
+    // debugf("save_context_and_switch_to: %p", to);
+    // debugf("context: ra: %p, sp:%p, a0:%p", to->ra, to->sp, to->a0);
+
+    // debug_core("save_context_and_switch_to: %p", to);
+    // to->print();
+    swtch(&saved_context, to);
+
+    // debug_core("switch_back: back to saved context");
+    // saved_context.print();
+}
 
 // save context and switch to another function
 void cpu::save_context_and_run(std::function<void()> func) {
-    kernel_assert(!intr_get(), "interrupt should be off"); // interrput is off
-    int __base_interrupt_status = base_interrupt_status; // save
-    
+    kernel_assert(
+        !cpu::local_irq_on() || (cpu::local_irq_on() && !(r_sie() & SIE_STIE)),
+        "timer interrupt should be off");  // interrput is off
+
     context temp_context;
     memset(&temp_context, 0, sizeof(context));
     temp_context.sp = (uint64)temp_kstack;
     temp_context.ra = (uint64)__function_caller;
     temp_context.a0 = (uint64)&func;
     swtch(&saved_context, &temp_context);
-
-    base_interrupt_status = __base_interrupt_status;
-
 }

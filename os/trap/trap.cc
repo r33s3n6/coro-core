@@ -12,33 +12,44 @@
 
 void trap_init_hart() {
     enable_kernel_trap();
-    w_sie(r_sie() | SIE_SEIE | SIE_SSIE);
+    w_sie((r_sie() | SIE_SEIE | SIE_SSIE) & ~SIE_STIE);
 }
 
 
-void enable_kernel_trap() {
+void set_kernel_trap() {
     w_stvec((uint64)kernel_vec & ~0x3); // DIRECT
-    intr_on();
+}
+
+void enable_kernel_trap() {
+    set_kernel_trap();
+    cpu::local_irq_enable();
 }
 
 void kernel_interrupt_handler(uint64 scause, uint64 stval, uint64 sepc) {
     kernel_process* p;
     uint64 cause = scause & 0xff;
     int irq;
+
+    
+    cpu* c = cpu::__my_cpu();
+
     switch (cause) {
     case SupervisorTimer: // kernel process timer, switch to next_context (scheduler)
-        p = cpu::my_cpu()->get_kernel_process();
-        cpu::my_cpu()->switch_back(p->get_context());
+        
+        p = c->get_kernel_process();
+        //debug_core("kernel timer interrupt: schedule %s out", p->get_name());
+        c->switch_back(p->get_context());
+        //debug_core("kernel timer interrupt: schedule %s in", p->get_name());
         break;
     case SupervisorExternal:
-        irq = cpu::my_cpu()->plic_claim();
+        irq = c->plic_claim();
         if (irq == VIRTIO0_IRQ) {
             //--  virtio_disk_intr();
         } else if(irq>0) {
             warnf("unexpected interrupt irq=%d", irq);
         }
         if (irq) {
-            cpu::my_cpu()->plic_complete(irq);
+            c->plic_complete(irq);
         }
         break;
     default:
@@ -46,10 +57,11 @@ void kernel_interrupt_handler(uint64 scause, uint64 stval, uint64 sepc) {
         panic("kernel interrupt");
         break;
     }
+
 }
 
 
-void kernel_exception_handler(uint64 scause, uint64 stval, uint64 sepc) {
+void kernel_exception_handler(uint64 scause, uint64 stval, uint64 sepc, uint64 sp) {
     switch (scause & 0xff) {
     case InstructionMisaligned:
         errorf("InstructionMisaligned in kernel: %p, stval = %p sepc = %p\n", scause, stval, sepc);
@@ -94,31 +106,37 @@ void kernel_exception_handler(uint64 scause, uint64 stval, uint64 sepc) {
         errorf("Unknown exception in kernel: %p, stval = %p sepc = %p\n", scause, stval, sepc);
         break;
     }
+    __trace_exception(sp);
     panic("kernel exception");
 }
 
 // interrupts and exceptions from kernel code go here via kernelvec,
 // on whatever the current kernel stack is.
-extern "C" void kernel_trap() {
+extern "C" void kernel_trap(uint64 sp) {
     uint64 sepc = r_sepc();
     uint64 sstatus = r_sstatus();
     uint64 scause = r_scause();
     uint64 stval = r_stval();
 
-    kernel_assert(!intr_get(), "Interrupt can not be turned on in trap handler");
+
+
+    kernel_assert(!cpu::local_irq_on(), "Interrupt can not be turned on in trap handler");
     kernel_assert((sstatus & SSTATUS_SPP) != 0, "kerneltrap: not from supervisor mode");
 
 
     if (scause & (1ULL << 63)) { 
         kernel_interrupt_handler(scause, stval, sepc);
     } else {
-        kernel_exception_handler(scause, stval, sepc);
-    }
+        kernel_exception_handler(scause, stval, sepc, sp);
+    } 
+
 
     // the yield() may have caused some traps to occur,
     // so restore trap registers for use by kernelvec.S's sepc instruction.
+
     w_sepc(sepc);
     w_sstatus(sstatus);
+    set_kernel_trap();
     // debugcore("About to return from kernel trap handler");
 
     // go back to kernelvec.S
@@ -129,7 +147,10 @@ extern "C" void kernel_trap() {
 
 
 void user_interrupt_handler(uint64 scause, uint64 stval, uint64 sepc) {
-    user_process* p = cpu::my_cpu()->get_user_process();
+
+    cpu* c = cpu::__my_cpu();
+
+    user_process* p = c->get_user_process();
     int irq;
     switch (scause & 0xff) {
     case SupervisorTimer:
@@ -138,7 +159,7 @@ void user_interrupt_handler(uint64 scause, uint64 stval, uint64 sepc) {
         
         break;
     case SupervisorExternal:
-        irq = cpu::my_cpu()->plic_claim();
+        irq = c->plic_claim();
         if (irq == UART0_IRQ) {
             infof("unexpected interrupt irq=UART0_IRQ");
 
@@ -148,7 +169,7 @@ void user_interrupt_handler(uint64 scause, uint64 stval, uint64 sepc) {
             infof("unexpected interrupt irq=%d", irq);
         }
         if (irq) {
-            cpu::my_cpu()->plic_complete(irq);
+            c->plic_complete(irq);
         }
         break;
     default:
@@ -159,7 +180,8 @@ void user_interrupt_handler(uint64 scause, uint64 stval, uint64 sepc) {
 }
 
 void user_exception_handler(uint64 scause, uint64 stval, uint64 sepc) {
-    user_process* p = cpu::my_cpu()->get_user_process();
+    cpu* c = cpu::__my_cpu();
+    user_process* p = c->get_user_process();
     trapframe *trapframe = p->get_trapframe();
     switch (scause & 0xff) {
     case UserEnvCall:
@@ -213,14 +235,15 @@ void user_trap() {
     uint64 scause = r_scause();
     uint64 stval = r_stval();
 
-    kernel_assert(!intr_get(), "");
+    kernel_assert(!cpu::local_irq_on(), "user trap: interrupt should be off");
+    kernel_assert((sstatus & SSTATUS_SPP) == 0, "usertrap: not from user mode");
+
 
     // these would be set in user_process::run
 
     // w_sie(r_sie() & ~SIE_STIE); // disable timer interrupt while handling user trap
     // enable_kernel_trap();
-
-    kernel_assert((sstatus & SSTATUS_SPP) == 0, "usertrap: not from user mode");
+    
 
     if (scause & (1ULL << 63)) { // interrput = 1
         user_interrupt_handler(scause, stval, sepc);
@@ -239,10 +262,11 @@ void user_trap_ret() {
     // we're about to switch the destination of traps from
     // kernel_trap() to user_trap(), so turn off interrupts until
     // we're back in user space, where usertrap() is correct.
-    intr_off();
+    cpu::local_irq_disable();
+
     w_stvec(((uint64)TRAMPOLINE + (user_vec - trampoline)) & ~0x3); // DIRECT
 
-    cpu* c = cpu::my_cpu();
+    cpu* c = cpu::__my_cpu();
 
     user_process *p = (user_process*)c->get_current_process();
 
@@ -250,7 +274,7 @@ void user_trap_ret() {
 
     // set next trap context
     trapframe->kernel_satp =   r_satp();         // kernel page table
-    trapframe->kernel_sp =     (uint64)cpu::my_cpu()->get_temp_kstack();
+    trapframe->kernel_sp =     (uint64)c->get_temp_kstack();
     trapframe->kernel_trap =   (uint64)user_trap;
     trapframe->kernel_hartid = r_tp();         // save hartid
 

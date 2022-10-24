@@ -11,10 +11,12 @@
 #include <drivers/console.h>
 
 #include <arch/cpu.h>
+#include <arch/riscv.h>
 
 #include <cxx/icxxabi.h>
 
 #include <trap/trap.h>
+#include <utils/assert.h>
 
 
 uint32 magic = 0xdeadbeef;
@@ -64,21 +66,32 @@ void test_coroutine(){
 }
 
 void idle(){
+    kernel_assert(cpu::local_irq_on() && (r_sie() & SIE_STIE), "timer interrupt should be enabled");
+    warnf("%d: idle: start", cpu::my_cpu()->get_core_id());
     while (true){
+
+        // kernel_assert(cpu::local_irq_on() && (r_sie() & SIE_STIE), "timer interrupt should be enabled");
         asm volatile("wfi");
     }
+    kernel_assert(false, "idle should not return");
+    __builtin_unreachable();
 }
 
 void init(){
-    shared_ptr<process> test_proc = make_shared<kernel_process>(kernel_task_queue.alloc_pid(), test_coroutine);
-    test_proc->set_name("test_coroutine");
-    kernel_task_queue.push(test_proc);
+    infof("init: start");
+
+    // shared_ptr<process> test_proc = make_shared<kernel_process>(kernel_task_queue.alloc_pid(), test_coroutine);
+    // test_proc->set_name("test_coroutine");
+    // kernel_task_queue.push(test_proc);
 
     for(int i=0;i<10;i++){
         shared_ptr<process> proc = make_shared<kernel_process>(kernel_task_queue.alloc_pid(), print_something);
         proc->set_name(("test" + std::to_string(i)).c_str());
+        debug_core("init: push process %s", proc->get_name());
         kernel_task_queue.push(proc);
     }
+
+    infof("scheduler: init done");
 
     return;
 
@@ -128,6 +141,8 @@ extern "C" void kernel_init(uint64 hartid)
 
         init_globals();
 
+        kernel_allocator.set_debug(true);
+
         for (uint64 i = 0; i < NCPU; i++) {
             if (i != hartid) // not this hart
             {
@@ -137,34 +152,39 @@ extern "C" void kernel_init(uint64 hartid)
         }
 
     }
-
-    cpu* my_cpu = cpu::my_cpu();
+    
+    cpu* my_cpu = cpu::__my_cpu();
     my_cpu->boot_hart();
     infof("hart %d starting", hartid);
 
-    // create idle process
-    if (hartid == 0){
-        infof("create idle process");
-        shared_ptr<process> idle_proc = make_shared<kernel_process>(hartid+1, idle);
-        idle_proc->binding_core = hartid;
-    
-        infof("push idle process");
-        kernel_task_queue.push(idle_proc);
+    infof("[%d] init scheduler", hartid);
+    kernel_process_scheduler[hartid].set_queue(&kernel_task_queue);
 
+
+    // create idle process
     
+    infof("create idle process");
+    shared_ptr<process> idle_proc = make_shared<kernel_process>(hartid+1, idle);
+    idle_proc->binding_core = hartid;
+    idle_proc->set_name("idle");
+    debugf("idle_proc %p: state:%d",idle_proc.get(), idle_proc->get_state());
+
+    infof("set idle process");
+    kernel_process_scheduler[hartid].last_choice = idle_proc;
+    
+
+    if (hartid == 0){
         // create init process
         infof("create init process");
         shared_ptr<process> init_proc = make_shared<kernel_process>(0, init);
+        infof("init_proc: ref: %d",init_proc.ref_count->count);
+        init_proc->set_name("init");
+        debugf("init_proc %p: state:%d", init_proc.get(), init_proc->get_state());
         kernel_task_queue.push(init_proc);
+        infof("init_proc: ref: %d",init_proc.ref_count->count);
     }
 
     
-
-    if (hartid == 0){
-
-        infof("[%d] init scheduler", hartid);
-        kernel_process_scheduler[hartid].set_queue(&kernel_task_queue);
-    }
     
 
     infof("[%d] wait for other hart", hartid);
@@ -177,12 +197,11 @@ extern "C" void kernel_init(uint64 hartid)
     
 
 
-    if (hartid == 0){
-        infof("start scheduler");
-        kernel_process_scheduler[hartid].run();
-    }
+
+    infof("%d: start scheduler" ,hartid);
+    kernel_process_scheduler[hartid].run();
     
-    cpu* current_cpu = cpu::my_cpu();
-    current_cpu->halt();
+    
+    my_cpu->halt();
 }
 

@@ -1,6 +1,8 @@
     .section .text.entry
     .globl _entry
+    .globl shutdown
 _entry:
+    .cfi_startproc
     # a0: hartid
     # every core has a boot stack of 4 KB
     la   sp, boot_stack_top
@@ -10,6 +12,9 @@ _entry:
     add  sp, sp, t0  
     mv   tp, a0        # set hart id: tp = hartid 
     call kernel_init
+
+    call shutdown
+    .cfi_endproc
 
     .section .bss.stack
     .globl boot_stack_top

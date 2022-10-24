@@ -6,15 +6,16 @@
 
 
 #include <utils/assert.h>
+#include <arch/cpu.h>
 
 
 void process::set_name(const char* name) {
-    warnf("%p:set name %s\n",this, name);
+    // warnf("%p:set name %s",this, name);
     strncpy(this->name, name, PROC_NAME_MAX);
 }
 
-const char* process::get_name() {    
-    warnf("%p:get name %p\n",this, name);
+const char* process::get_name() const{    
+    // warnf("%p:get name %p",this, name);
     return name;
 }
 
@@ -37,6 +38,9 @@ void process::wake_up() {
     lock.unlock();
 }
 
+// pause and switch to another process
+// you should only call this when you use
+// shared stack
 void process::pause(){
     lock.lock();
     if(_state == RUNNING) {
@@ -44,8 +48,8 @@ void process::pause(){
     }
     lock.unlock();
 
-
-    cpu::my_cpu()->switch_back(nullptr); // we don't save context, for stack is shared with other processes
+    kernel_assert(!cpu::local_irq_on(), "pause with irq on");
+    cpu::__my_cpu()->switch_back(nullptr); // we don't save context, for stack is shared with other processes
 }
 
 user_process::user_process(int pid){
@@ -58,11 +62,7 @@ user_process::user_process(int pid){
         warnf("failed to create user pagetable");
         return;
     }
-    // memset(&_context, 0, sizeof(context));
-    // memset((void *)kstack_top, 0, KSTACK_SIZE);
 
-    // _context.ra = (uint64)forkret; // used in swtch()
-    // _context.sp = kstack_top + KSTACK_SIZE;
 
     this->_state = ALLOCATED; // mark as init success
 
@@ -200,7 +200,7 @@ void user_process::__clean_resources() {
 }
 
 // set state, wake up parent(if any)
-void user_process::__set_exit_code(int code) {
+void process::__set_exit_code(int code) {
     exit_code = code;
 
     if (parent != nullptr) {
@@ -216,7 +216,7 @@ void user_process::__set_exit_code(int code) {
 2. set state, wake up parent(if any)
 3. switch back to previous context (must be scheduler who runs this process)
  */
-void user_process::exit(int code){
+void process::exit(int code){
 
 
     __clean_resources();
@@ -227,17 +227,19 @@ void user_process::exit(int code){
 
     infof("proc %d exit with %d\n", pid, code);
 
+
+    kernel_assert(!cpu::local_irq_on(), "pause with irq on");
     // switch back to previous context
-    cpu::my_cpu()->switch_back(nullptr);
+    cpu::__my_cpu()->switch_back(nullptr);
 
 }
 
-void user_process::__do_kill(){
+void process::__do_kill(){
     __clean_resources();
     __set_exit_code(-1);
 }
 
-void user_process::__kill(){
+void process::__kill(){
 
     if (_state != RUNNING) {
         __do_kill();
@@ -247,19 +249,19 @@ void user_process::__kill(){
     
 }
 
-void user_process::kill(){
+void process::kill(){
     lock.lock();
     __kill();
     lock.unlock();
     
 }
 
-void user_process::__clean_children() {
+void process::__clean_children() {
     auto it = children.begin();
 
     while (it != children.end()) {
         auto& child = *it;
-
+        
         child->lock.lock();
         child->parent = nullptr;
         child->__kill();
@@ -276,7 +278,9 @@ bool user_process::check_killed(){
 
     if(_state == KILLED){
         __do_kill();
-        cpu::my_cpu()->switch_back(nullptr);
+        kernel_assert(!cpu::local_irq_on(), "pause with irq on");
+        // switch back to previous context
+        cpu::__my_cpu()->switch_back(nullptr);
         __builtin_unreachable();
     }
 
@@ -299,7 +303,7 @@ bool user_process::run(){
     
 
 
-    // actual run
+    // actual run 
     cpu::my_cpu()->save_context_and_run(resume_func);
 
 
@@ -368,22 +372,28 @@ file *user_process::get_file(int fd) {
 
 
 
-void __kernel_function_caller(void(*func_ptr)()) {
+void kernel_process::__kernel_function_caller(void(*func_ptr)()) {
 
-    // debugf("kernel function caller: %p\n", (void*)func_ptr);
+    debug_core("kernel function caller: %p\n", (void*)func_ptr);
 
     // only here kernel can be interrupted by timer
-    timer::start_timer_interrupt();
-    intr_on();
+    // timer::start_timer_interrupt();
+    // enable_kernel_trap();
+
+    // kernel_assert(cpu::local_irq_on() && (r_sie() & SIE_STIE), "timer interrupt is not enabled");
+
+    cpu::local_irq_enable();
 
     func_ptr();
 
-    intr_off();
-    timer::stop_timer_interrupt();
+    cpu::local_irq_disable();
+    // timer::stop_timer_interrupt();
 
-    cpu::my_cpu()->get_kernel_process()->exit();
+    debug_core("kernel function caller: %p done\n", (void*)func_ptr);
     
-    cpu::my_cpu()->switch_back(nullptr);
+    cpu::__my_cpu()->get_kernel_process()->__set_exit_code(0);
+    
+    cpu::__my_cpu()->switch_back(nullptr);
 
     __builtin_unreachable();
 }
@@ -403,40 +413,64 @@ kernel_process::kernel_process(int pid, void (*func)()) {
         return;
     }
 
-    stack_bottom_va = (uint64)stack_pa;
+    stack_bottom_va = (uint64)stack_pa + PGSIZE;
 
     memset(&_context, 0, sizeof(_context));
-    _context.ra = (uint64)__kernel_function_caller; 
+    _context.ra = (uint64)&kernel_process::__kernel_function_caller; 
     _context.sp = (uint64)stack_bottom_va;
     _context.a0 = (uint64)func;
 
     _state = RUNNABLE;
+
+    debug_core("kernel process %d created, stack_pa: %p\n", pid, stack_pa);
 }
 
-void kernel_process::exit(){
-    kernel_allocator.free_page((void*)stack_bottom_va);
+void kernel_process::__clean_resources(){
+    void* stack_pa = (void*)(stack_bottom_va - PGSIZE);
+    kernel_allocator.free_page(stack_pa);
+    stack_bottom_va = 0;
 
-    _state = EXITED;
-    
 }
+
 
 bool kernel_process::run(){
     {
         auto guard = make_lock_guard(lock);
         if (_state == EXITED) {
+            // warnf("kernel process %d is already exited\n", pid);
             return false;
         }
 
-        kernel_assert(_state == RUNNABLE, "process is not runnable");
+
+        if (_state != RUNNABLE) {
+            errorf("kernel process %d is not runnable: %d\n", pid, int(_state));
+            
+            panic("kernel process is not runnable");
+        }
+        
 
         _state = RUNNING;
     }
     
-    // actual run
+    // debug_core("_context.ra: %p", (void*)_context.ra);
     
-    cpu::my_cpu()->save_context_and_switch_to(&_context);
+    {
+        cpu_ref c = cpu::my_cpu();
+        //debug_core("run kernel process %d, state=%d", pid, (int)_state);
 
-    __sync_synchronize();
+        timer::set_next_timer();
+        timer::start_timer_interrupt();
+        c->save_context_and_switch_to(&_context);
+        timer::stop_timer_interrupt();
+
+        //debug_core("pause kernel process %d, state=%d", pid, (int)_state);
+        
+        __sync_synchronize();
+
+    }
+
+
+    
 
     {
         auto guard = make_lock_guard(lock);
@@ -445,6 +479,7 @@ bool kernel_process::run(){
             _state = RUNNABLE;
             return true; 
         } else if (_state == EXITED) {
+            __clean_resources();
             return false;
         } else {
             panic("process state is invalid");

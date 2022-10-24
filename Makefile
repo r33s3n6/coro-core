@@ -31,7 +31,7 @@ HEADER_DEP = $(addsuffix .d, $(basename $(CXX_OBJS)))
 INCLUDEFLAGS = -I$K
 
 CXXFLAGS = -Wall -Wextra -Werror # lint
-CXXFLAGS += -Og -g -fno-omit-frame-pointer -ggdb # debug
+CXXFLAGS += -Og -gdwarf-2 -fno-omit-frame-pointer -ggdb # debug
 CXXFLAGS += -foptimize-sibling-calls -fcoroutines -std=c++20 -fno-exceptions -fno-rtti -D HANDLE_MEMORY_ALLOC_FAIL# coroutine
 CXXFLAGS += -D NCPU=$(CPUS) # cpu
 CXXFLAGS += -MD
@@ -74,7 +74,7 @@ LDFLAGS= -z max-page-size=4096
 
 $(AS_OBJS): $(BUILDDIR)/$K/%.o : $K/%.S Makefile
 	@mkdir -p $(@D)
-	$(AS) $(CFLAGS) -c $< -o $@
+	$(AS) $(CXXFLAGS) -c $< -o $@
 
 $(CXX_OBJS): $(BUILDDIR)/$K/%.o : $K/%.cc  $(BUILDDIR)/$K/%.d Makefile
 	@mkdir -p $(@D)

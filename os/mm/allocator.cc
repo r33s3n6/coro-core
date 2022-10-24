@@ -50,11 +50,12 @@ void* operator new(std::size_t size) {
     
     
     if(!ptr){
-        kernel_console_logger.printf<false>("new failed: %d\n",size);
+        __errorf("new failed: %d\n",size);
         panic("new failed");
     }
+
     
-    //debug_core("new size %d, ptr: %p", size, ptr);
+    // debug_core("new size %d, ptr: %p", size, ptr);
     return ptr;
 }
 
@@ -91,7 +92,7 @@ void operator delete(void* ptr) {
         ((char*)ptr)[i] = 0xcd;
     }
 
-    //debug_core("delete: %p", ptr);
+    // debug_core("delete: %p", ptr);
     
 }
 

@@ -85,7 +85,9 @@ enum Interrupt {
 
 
 void trap_init_hart();
+void set_kernel_trap();
 void enable_kernel_trap();
 void user_trap_ret();
+extern "C" void __trace_exception(uint64 sp);
 
 #endif // TRAP_H

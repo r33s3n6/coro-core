@@ -36,7 +36,7 @@ class process : public sleepable {
 
     int binding_core = -1;        // -1 means no binding
 
-protected:
+
 
     enum state {
         INIT = 0,   
@@ -48,7 +48,7 @@ protected:
         ZOMBIE,
         EXITED,
     };
-
+protected:
     spinlock lock {"proc.lock"};
     
     
@@ -57,7 +57,9 @@ protected:
     int exit_code = -1;             // Exit status to be returned to parent's wait
     uint64 stack_bottom_va = 0;     // Virtual address of stack
 
-
+    process *parent = nullptr;      // Parent process
+    list<shared_ptr<process>> children;
+    wait_queue wait_children_queue;
 
     // debug
     char name[PROC_NAME_MAX] {'\0'};// Process name 
@@ -66,38 +68,52 @@ protected:
     // reschedule?
     virtual bool run() = 0;
     virtual ~process() = default;
+    
 
-    bool ready() {
+    void exit(int code);
+    void kill();
+    
+
+    bool ready() const{
         return _state == RUNNABLE;
     }
 
-    bool allocated() {
+    bool allocated() const{
         return _state == ALLOCATED;
     }
 
     void pause();
 
-
     void sleep() override;
     void wake_up() override;
 
     void set_name(const char* name);
+    const char* get_name() const;
+    int get_pid() const { return pid; }
+    uint64 get_stack_va() const { return stack_bottom_va; }
+    state get_state() const{
+        return _state;
+    }
 
-    const char* get_name();
+    protected:
+    virtual void __clean_resources() {};
 
+
+    void __set_exit_code(int code);
+    void __do_kill();
+    void __kill();
+    void __clean_children();
 };
 
 class user_process : public process {
 
     protected:
-    bool killed = false;              // If non-zero, have been killed
+    // bool killed = false;              // If non-zero, have been killed
     
     trapframe *trapframe_pa = nullptr;   // data page for trampoline.S, physical address
     pagetable_t pagetable = nullptr;  // User page table
 
-    user_process *parent = nullptr;      // Parent process
-    list<shared_ptr<user_process>> children;
-    wait_queue wait_children_queue;
+    
 
     uint64 text_size = 0;             // size of text segment (bytes)
     uint64 heap_size = 0;             // heap memory used by this process
@@ -114,8 +130,8 @@ class user_process : public process {
     user_process(int pid);
     ~user_process();
     bool run() override;
-    void exit(int code);
-    void kill();
+    
+
     void exec(const char *path, char *const argv[]);
 
     void wait_children();
@@ -125,13 +141,9 @@ class user_process : public process {
     int  __init_pagetable();
     void __free_pagetable();
 
-    void __clean_resources();
+    
     void __close_files();
-    void __clean_children();
 
-    void __set_exit_code(int code);
-    void __do_kill();
-    void __kill();
 
     public:
     file* get_file(int fd);
@@ -143,6 +155,9 @@ class user_process : public process {
     private:
     void wait_children_done();
     void resume_func_done(uint64 ret);
+
+    protected:
+    virtual void __clean_resources() override;
     
 };
 
@@ -155,8 +170,14 @@ class kernel_process : public process {
     public:
     kernel_process(int pid, void (*func)());
     bool run() override;
-    void exit();
+    void exit(int code);
     context* get_context() { return &_context; }
+
+    protected:
+    virtual void __clean_resources() override;
+
+    private:
+    static void __kernel_function_caller(void(*func_ptr)());
 };
 
 

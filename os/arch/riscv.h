@@ -60,6 +60,7 @@ static inline uint64 r_sstatus() {
     return x;
 }
 
+// warning: you should only use this when interrupts are disabled.
 static inline void w_sstatus(uint64 x) {
     asm volatile("csrw sstatus, %0"
                  :
@@ -253,17 +254,37 @@ static inline uint64 r_cycle() {
     return x;
 }
 
-// enable device interrupts
-static inline void intr_on() { w_sstatus(r_sstatus() | SSTATUS_SIE); }
 
-// disable device interrupts
-static inline void intr_off() { w_sstatus(r_sstatus() & ~SSTATUS_SIE); }
+
+static inline uint64 rc_sstatus(uint64 val){
+    unsigned long __v = (unsigned long)(val);		
+	__asm__ __volatile__ ("csrrc %0, sstatus, %1"
+			      : "=r" (__v) : "rK" (__v)		
+			      : "memory");			
+	return __v;	
+}
+
+static inline void s_sstatus(uint64 val){
+    unsigned long __v = (unsigned long)(val);		
+	__asm__ __volatile__ ("csrs sstatus, %0"	
+			      : : "rK" (__v)			
+			      : "memory");	
+}
+
+static inline void c_sstatus(uint64 val){
+    unsigned long __v = (unsigned long)(val);		
+	__asm__ __volatile__ ("csrc sstatus, %0"	
+			      : : "rK" (__v)			
+			      : "memory");	
+}
+
+
 
 // are device interrupts enabled?
-static inline int intr_get() {
-    uint64 x = r_sstatus();
-    return (x & SSTATUS_SIE) != 0;
-}
+// static inline int intr_get() {
+//     uint64 x = r_sstatus();
+//     return (x & SSTATUS_SIE) != 0;
+// }
 
 static inline uint64 r_sp() {
     uint64 x;

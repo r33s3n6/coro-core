@@ -146,3 +146,19 @@ make: *** [Makefile:77: build/os/utils/fprintf.o] Error 1
 
 1. 重写了`process`，现在分为`kernel_process`和`user_process`。`kernel`中只有在运行`kernel_process`时才打开时钟中断。
 
+
+
+问题
+```
+void cpu::push_off(){
+    int old = intr_get();
+
+    intr_off();
+    if (noff == 0) {
+        base_interrupt_status = old;
+    }
+    noff += 1;
+}
+```
+
+`csrrc`

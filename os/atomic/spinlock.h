@@ -14,7 +14,7 @@ class cpu;
 
 class spinlock {
 public:
-    spinlock(const char* name = "unnamed") :_locked(0), _cpu(0), _name(name) {}
+    spinlock(const char* name = "unnamed") :_locked(0), core_id(-1), _name(name) {}
 
     ~spinlock() {}
 
@@ -27,12 +27,17 @@ public:
 
     // Check whether this cpu is holding the lock.
     // Interrupts must be off.
+    bool __holding();
+
     bool holding();
 
 
     private:
     volatile uint32 _locked;
-    cpu* _cpu;
+    // cpu* _cpu;
+
+    int core_id;
+    int old_status;
     const char* _name;
 };
 

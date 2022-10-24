@@ -6,4 +6,6 @@ symbol-file build/kernel
 display/12i $pc-8
 set riscv use-compressed-breakpoints yes
 break *0x1000
+b __trace_exception__sret
+b panic
 

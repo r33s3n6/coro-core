@@ -45,6 +45,7 @@ class list {
     void push_back(const data_t& data) {
         node* new_node = new node;
         new_node->data = data;
+
         new_node->next = tail;
         new_node->prev = tail->prev;
         tail->prev->next = new_node;
@@ -103,6 +104,7 @@ class list {
 
     int size() { return _size; }
 
+
    private:
     void __remove(node* node) {
         node->prev->next = node->next;
@@ -110,7 +112,7 @@ class list {
         delete node;
         _size--;
     }
-
+public: //TODO: private:
     node* head;
     node* tail;
     int _size;

@@ -9,14 +9,15 @@
 // Acquire the lock.
 // Loops (spins) until the lock is acquired.
 void spinlock::lock() {
-    cpu* current_cpu = cpu::my_cpu();
-    current_cpu->push_off(); // disable interrupts to avoid deadlock.
+    // turn off the interrupt and get the current cpu id
+    int old = cpu::local_irq_save();
+    int id = cpu::current_id();
 
-    if (holding()) {
+    if (__holding()) {
         kernel_console_logger.printf<false>(
             logger::log_level::ERROR, 
             "lock \"%s\" is held by core %d, cannot be reacquired",
-            _name, _cpu->get_core_id());
+            _name, core_id);
         panic("This cpu is acquiring a acquired lock");
     }
 
@@ -43,7 +44,8 @@ void spinlock::lock() {
     // On RISC-V, this emits a fence instruction.
     __sync_synchronize();
 
-    _cpu = current_cpu;
+    core_id = id;
+    old_status = old;
 
     //kernel_console_logger.printf<false>(
     //            logger::log_level::WARN, 
@@ -53,14 +55,18 @@ void spinlock::lock() {
 // Release the lock.
 void spinlock::unlock() {
     // kernel_assert(holding(slock), "a core should hold the lock if it wants to release it");
-    if (!holding()) {
+    if (!__holding()) {
         kernel_console_logger.printf<false>(
                     logger::log_level::ERROR, 
                     "Error release lock: %s\n", _name);
         panic("Try to release a lock when not holding it");
     }
 
-    _cpu = nullptr;
+
+    core_id = -1;
+    int old = old_status;
+    old_status = 0;
+
 
     // Tell the C compiler and the CPU to not move loads or stores
     // past this point, to ensure that all the stores in the critical
@@ -79,12 +85,18 @@ void spinlock::unlock() {
     //   amoswap.w zero, zero, (s1)
     __sync_lock_release(&_locked);
 
-    //kernel_console_logger.printf<false>(
-    //                logger::log_level::WARN, 
-    //                "release lock: %s\n", _name);
-    cpu::my_cpu()->pop_off();
+    // restore the interrupt status
+    cpu::local_irq_restore(old);
 }
 
+bool spinlock::__holding() {
+    return (_locked && core_id == cpu::current_id());
+}
+
+
 bool spinlock::holding() {
-    return (_locked && _cpu == cpu::my_cpu());
+    int old = cpu::local_irq_save();
+    bool ret = __holding();
+    cpu::local_irq_restore(old);
+    return ret;
 }

@@ -38,6 +38,7 @@ class allocator {
 
     void* start = nullptr;
     void* end = nullptr;
+    bool debug_output = false;
 
     public:
     allocator(void* start, void* end){
@@ -48,6 +49,10 @@ class allocator {
         }
     }
 
+    void set_debug(bool debug){
+
+        debug_output = debug;
+    }
 
     void free_page(void* pa){
         if (!pa) {
@@ -70,7 +75,13 @@ class allocator {
         
 
         #ifdef MEMORY_DEBUG
+        if(debug_output){
+            debug_core("free_page: %p", pa);
+        }
         memset((char*)pa + sizeof(page_info), 0x5a, PGSIZE - sizeof(page_info));
+        if(debug_output){
+            debug_core("free_page: %p done", pa);
+        }
         #endif
     }
 
@@ -90,7 +101,12 @@ class allocator {
             free_page_count--;
         }
 
+        // infof("alloc_page: %p", page);
+
         #ifdef MEMORY_DEBUG
+        if(debug_output){
+            debug_core("alloc_page: %p", page);
+        }
         memset(page, 0x5c, PGSIZE);
         #endif
 

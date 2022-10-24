@@ -16,7 +16,7 @@ enum sbi_ext_hsm_fid {
 
 void sbi_console_putchar(int c);
 int sbi_console_getchar();
-void shutdown();
+extern "C" __attribute__((noreturn)) void shutdown();
 void set_timer(uint64 stime);
 void start_hart(uint64 hartid, uint64 start_addr, uint64 a1);
 

@@ -67,7 +67,7 @@ SECTIONS
     }
     ekernel = .;
 
-    /DISCARD/ : {
+    .eh_frame : {
         *(.eh_frame)
     }
 }
