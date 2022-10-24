@@ -37,14 +37,13 @@ shared_ptr<process> task_queue::pop(int core_id) {
     auto guard = make_lock_guard(lock);
 
     if(queue.empty()){
-
         // debug_core("task_queue is empty");
         return nullptr;
     }
 
 
-    auto min_it = queue.begin();
-    uint64 min_stride = (*min_it)->stride;
+    auto min_it = queue.end();
+    uint64 min_stride = 0;
     
     for(auto it = queue.begin(); it != queue.end(); ++it) {
         if(!(*it)->ready()){
@@ -55,7 +54,7 @@ shared_ptr<process> task_queue::pop(int core_id) {
             // debugf("core %d: skip process %s, binding core %d", core_id, (*it)->get_name(), (*it)->binding_core);
             continue;
         }
-        if (stride_cmp((*it)->stride, min_stride) < 0) {
+        if (min_it == queue.end() || stride_cmp((*it)->stride, min_stride) < 0) {
             // debugf("core %d: update min stride %d", core_id, (*it)->stride);
             min_stride = (*it)->stride;
             min_it = it;
@@ -63,7 +62,7 @@ shared_ptr<process> task_queue::pop(int core_id) {
     }
 
     if(min_it == queue.end()){
-        debugf("no process ready");
+        // debug_core("no process ready");
         return nullptr;
     }
 
@@ -104,12 +103,15 @@ void process_scheduler::run()
     uint64 busy = 0;
     uint64 all = 0;
     uint64 timestamp1 = r_cycle();
+
+    cpu *c = cpu::__my_cpu();
+    int core_id = c->get_core_id();
     while(true)
     {
         
         kernel_assert(!cpu::__timer_irq_on(), "timer irq should be off");
-        cpu *c = cpu::__my_cpu();
-        auto process = shared_queue->pop(c->get_core_id());
+        
+        auto process = shared_queue->pop(core_id);
 
         if(!process) {
 

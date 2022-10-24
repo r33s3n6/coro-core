@@ -52,7 +52,7 @@ protected:
     spinlock lock {"proc.lock"};
     
     
-    volatile state _state = INIT;   // Process state
+    state _state = INIT;   // Process state
     int pid = -1;                   // Process ID
     int exit_code = -1;             // Exit status to be returned to parent's wait
     uint64 stack_bottom_va = 0;     // Virtual address of stack
@@ -168,7 +168,10 @@ class kernel_process : public process {
     context _context;      // swtch() here to run process
 
     public:
-    kernel_process(int pid, void (*func)());
+    using func_type = void (*)(void*);
+    
+
+    kernel_process(int pid, func_type func, void* arg = nullptr, uint64 arg_size = 0);
     bool run() override;
     void exit(int code);
     context* get_context() { return &_context; }
@@ -177,7 +180,8 @@ class kernel_process : public process {
     virtual void __clean_resources() override;
 
     private:
-    static void __kernel_function_caller(void(*func_ptr)());
+    
+    static void __kernel_function_caller(void(*func_ptr)(void*), void *arg);
 };
 
 

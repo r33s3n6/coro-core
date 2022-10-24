@@ -54,6 +54,7 @@ void init_globals(){
 
 extern int kernel_coroutine_test();
 extern void print_something();
+extern void test_bind_core(void* arg);
 
 
 // test code
@@ -85,11 +86,21 @@ void init(){
     // kernel_task_queue.push(test_proc);
 
     for(int i=0;i<10;i++){
-        shared_ptr<process> proc = make_shared<kernel_process>(kernel_task_queue.alloc_pid(), print_something);
-        proc->set_name(("test" + std::to_string(i)).c_str());
+
+        int bind_core;
+        if (i<4){
+            bind_core = i;
+        } else {
+            bind_core = 0;
+        }
+        shared_ptr<process> proc = make_shared<kernel_process>(kernel_task_queue.alloc_pid(), test_bind_core, &bind_core, sizeof(bind_core));
+        proc->set_name(("N" + std::to_string(i) + " C" + std::to_string(bind_core)).c_str());
+        proc->binding_core = bind_core;
         debug_core("init: push process %s", proc->get_name());
         kernel_task_queue.push(proc);
     }
+
+
 
     infof("scheduler: init done");
 
@@ -164,7 +175,7 @@ extern "C" void kernel_init(uint64 hartid)
     // create idle process
     
     infof("create idle process");
-    shared_ptr<process> idle_proc = make_shared<kernel_process>(hartid+1, idle);
+    shared_ptr<process> idle_proc = make_shared<kernel_process>(hartid+1, (kernel_process::func_type)idle);
     idle_proc->binding_core = hartid;
     idle_proc->set_name("idle");
     debugf("idle_proc %p: state:%d",idle_proc.get(), idle_proc->get_state());
@@ -176,7 +187,7 @@ extern "C" void kernel_init(uint64 hartid)
     if (hartid == 0){
         // create init process
         infof("create init process");
-        shared_ptr<process> init_proc = make_shared<kernel_process>(0, init);
+        shared_ptr<process> init_proc = make_shared<kernel_process>(0, (kernel_process::func_type)init);
         infof("init_proc: ref: %d",init_proc.ref_count->count);
         init_proc->set_name("init");
         debugf("init_proc %p: state:%d", init_proc.get(), init_proc->get_state());

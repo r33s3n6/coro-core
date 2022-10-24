@@ -372,7 +372,9 @@ file *user_process::get_file(int fd) {
 
 
 
-void kernel_process::__kernel_function_caller(void(*func_ptr)()) {
+
+
+void kernel_process::__kernel_function_caller(void(*func_ptr)(void*), void* arg) {
 
     debug_core("kernel function caller: %p\n", (void*)func_ptr);
 
@@ -384,7 +386,7 @@ void kernel_process::__kernel_function_caller(void(*func_ptr)()) {
 
     cpu::local_irq_enable();
 
-    func_ptr();
+    func_ptr(arg);
 
     cpu::local_irq_disable();
     // timer::stop_timer_interrupt();
@@ -403,7 +405,7 @@ void kernel_process::__kernel_function_caller(void(*func_ptr)()) {
 // if func returns, it switches back to here.
 // if timer interrupt happens, it will also switch back to here.
 // but leaves context valid to be continued.
-kernel_process::kernel_process(int pid, void (*func)()) {
+kernel_process::kernel_process(int pid, func_type func, void* arg, uint64 arg_size) {
 
     this->pid = pid;
 
@@ -415,9 +417,16 @@ kernel_process::kernel_process(int pid, void (*func)()) {
 
     stack_bottom_va = (uint64)stack_pa + PGSIZE;
 
+    uint64 stack_top_va = stack_bottom_va;
+    // copy arg to stack
+    if(arg) {
+        stack_top_va -= arg_size;
+        memcpy((void*)stack_top_va, arg, arg_size);
+    }
+
     memset(&_context, 0, sizeof(_context));
     _context.ra = (uint64)&kernel_process::__kernel_function_caller; 
-    _context.sp = (uint64)stack_bottom_va;
+    _context.sp = (uint64)stack_top_va;
     _context.a0 = (uint64)func;
 
     _state = RUNNABLE;

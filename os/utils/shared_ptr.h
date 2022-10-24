@@ -38,15 +38,13 @@ class shared_ptr {
 
 
     explicit operator bool() const { return ptr != nullptr; }
+    
     constexpr shared_ptr(const shared_ptr& other) noexcept
-
         : ptr(other.ptr), ref_count(other.ref_count) {
-        
         
         if (ptr) {
             ref_count->inc();
         }
-        // debugf("shared_ptr copy constructor: %p %p(ref:%d)", ptr, ref_count,ref_count->count);
     }
 
     template <typename other_type,
@@ -56,11 +54,9 @@ class shared_ptr {
 
         : ptr(other.ptr), ref_count(other.ref_count) {
         
-        
         if (ptr) {
             ref_count->inc();
         }
-        // debugf("shared_ptr copy constructor: %p %p(ref:%d)", ptr, ref_count,ref_count->count);
     }
 
 
@@ -109,6 +105,9 @@ class shared_ptr {
         
         return *this;
     }
+
+
+    
 
     ~shared_ptr() {
         if (ptr) {

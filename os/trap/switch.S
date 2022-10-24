@@ -41,6 +41,7 @@ _load:
         ld s11, 104(a1)
 
         ld a0,  112(a1)
+        mv a1,  sp
 
         ret
 
