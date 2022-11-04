@@ -110,7 +110,7 @@ task<void> test_disk_write(int block_no, uint8* buf, int len, int id) {
 task<void> test_buffer_reuse() {
     debug_core("test_buffer_reuse");
 
-    for(int i = 0; i < 10; i++) {
+    for(int i = 0; i < 1000; i++) {
         auto buffer_ref = co_await kernel_block_buffer.get_node(virtio_disk_id, 20+i);
         auto& buffer = *buffer_ref;
 
