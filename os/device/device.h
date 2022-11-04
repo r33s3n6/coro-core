@@ -14,6 +14,8 @@ struct device_id_t {
     }
 };
 
+constexpr device_id_t virtio_disk_id{VIRTIO_DISK_MAJOR, VIRTIO_DISK_MINOR};
+
 
 class device {
 public:

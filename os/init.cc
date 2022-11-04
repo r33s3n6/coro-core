@@ -118,7 +118,7 @@ void init(){
         shared_ptr<process> proc = make_shared<kernel_process>(kernel_process_queue.alloc_pid(), test_bind_core, &bind_core, sizeof(bind_core));
         proc->set_name(("N" + std::to_string(i) + " C" + std::to_string(bind_core)).c_str());
         proc->binding_core = bind_core;
-        debug_core("init: push process %s", proc->get_name());
+        // debug_core("init: push process %s", proc->get_name());
         kernel_process_queue.push(proc);
     }
 
@@ -183,7 +183,7 @@ extern "C" void kernel_init(uint64 hartid)
 
         init_globals();
 
-        kernel_allocator.set_debug(true);
+        // kernel_allocator.set_debug(true);
 
         for (uint64 i = 0; i < NCPU; i++) {
             if (i != hartid) // not this hart
@@ -204,22 +204,22 @@ extern "C" void kernel_init(uint64 hartid)
 
 
     // create idle process
-    infof("create idle process");
+    //infof("create idle process");
     shared_ptr<process> idle_proc = make_shared<kernel_process>(hartid+1, (kernel_process::func_type)idle);
     idle_proc->binding_core = hartid;
     idle_proc->set_name("idle");
-    debugf("idle_proc %p: state:%d",idle_proc.get(), idle_proc->get_state());
+    //debugf("idle_proc %p: state:%d",idle_proc.get(), idle_proc->get_state());
 
-    infof("set idle process");
+    //infof("set idle process");
     kernel_process_scheduler[hartid].last_choice = idle_proc;
 
     // create task_scheduler process
     kernel_task_scheduler[hartid].set_queue(&kernel_task_queue);
-    infof("create task_scheduler process");
+    //infof("create task_scheduler process");
     shared_ptr<process> task_scheduler_proc = make_shared<kernel_process>(kernel_process_queue.alloc_pid(), task_scheduler_run, (void*)&hartid, sizeof(hartid));
     task_scheduler_proc->binding_core = hartid;
     task_scheduler_proc->set_name("task_scheduler");
-    debugf("task_scheduler_proc %p: state:%d",task_scheduler_proc.get(), task_scheduler_proc->get_state());
+    //debugf("task_scheduler_proc %p: state:%d",task_scheduler_proc.get(), task_scheduler_proc->get_state());
 
     infof("push task_scheduler process");
     kernel_process_queue.push(task_scheduler_proc);
@@ -229,11 +229,11 @@ extern "C" void kernel_init(uint64 hartid)
         // create init process
         infof("create init process");
         shared_ptr<process> init_proc = make_shared<kernel_process>(0, (kernel_process::func_type)init);
-        infof("init_proc: ref: %d",init_proc.ref_count->count);
+        //infof("init_proc: ref: %d",init_proc.ref_count->count);
         init_proc->set_name("init");
-        debugf("init_proc %p: state:%d", init_proc.get(), init_proc->get_state());
+        //debugf("init_proc %p: state:%d", init_proc.get(), init_proc->get_state());
         kernel_process_queue.push(init_proc);
-        infof("init_proc: ref: %d",init_proc.ref_count->count);
+        //infof("init_proc: ref: %d",init_proc.ref_count->count);
     }
 
     

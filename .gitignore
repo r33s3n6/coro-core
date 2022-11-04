@@ -6,3 +6,7 @@ build
 bak
 .bashrc
 .DS_Store
+
+nfs/fs-copy.img
+nfs/empty.img
+nfs/fs-copy.dump

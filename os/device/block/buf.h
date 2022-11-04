@@ -22,13 +22,16 @@ struct block_buffer_node {
     block_device * bdev;
     uint64 block_no;
     uint64 reference_count = 0;
-    uint8 data[block_device::BLOCK_SIZE];
+    uint8 *data;
     wait_queue queue;
     spinlock lock {"block_buffer_node.lock"};
-    block_buffer_node(block_device* bdev, uint64 block_no) : bdev(bdev), block_no(block_no) {}
-    block_buffer_node() = default;
-
-
+    // block_buffer_node(block_device* bdev, uint64 block_no) : bdev(bdev), block_no(block_no) {}
+    block_buffer_node() {
+        data = new uint8[block_device::BLOCK_SIZE];
+    }
+    ~block_buffer_node() {
+        delete[] data;
+    }
 
     
     task<void> write_to_device() {
@@ -164,9 +167,11 @@ public:
         }
         
         if(unused == buffer_list.end()) {
-            buffer_list.push_front(block_buffer_node(bdev, block_no));
+            block_buffer_node& new_buffer = buffer_list.push_front();
+            new_buffer.bdev = bdev;
+            new_buffer.block_no = block_no;
             lock.unlock();
-            co_return block_buffer_node_ref{&buffer_list.front()};
+            co_return block_buffer_node_ref{&new_buffer};
         }
         lock.unlock();
 

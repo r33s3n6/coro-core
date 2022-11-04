@@ -73,7 +73,7 @@ void cpu::halt() {
         }
         __fini_cxx();
 
-        check_memory();
+        // check_memory();
         __infof("[ccore] All finished. Shutdown ...");
         shutdown();
     } else {

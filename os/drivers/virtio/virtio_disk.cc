@@ -191,7 +191,7 @@ int virtio_disk::alloc_descs(int* idx) {
 
 // this is not optimal for read operation only need 2 descriptors
 task<int> virtio_disk::disk_command(uint64 command,uint64 block_no, uint64 count, void *buf) {
-    debug_core("disk_command %d %d %p %d", command, block_no, count, buf);
+    // debug_core("disk_command %d %d %p %d", command, block_no, count, buf);
 
     uint64 sector = block_no * (block_device::BLOCK_SIZE / 512);
     uint64 nsector = count * (block_device::BLOCK_SIZE / 512);
@@ -213,7 +213,7 @@ task<int> virtio_disk::disk_command(uint64 command,uint64 block_no, uint64 count
         if (alloc_descs(idx) == 0) {
             break;
         }
-        debug_core("virtio_disk_rw: no descriptors available");
+        // debug_core("virtio_disk_rw: no descriptors available");
         co_await request_queue.done(lock);
     }
 
@@ -249,8 +249,8 @@ task<int> virtio_disk::disk_command(uint64 command,uint64 block_no, uint64 count
     desc[idx[2]].flags = VRING_DESC_F_WRITE;  // device writes the status
     desc[idx[2]].next = 0;
 
-    debug_core("virtio_disk_rw: idx %d %d %d", idx[0], idx[1], idx[2]);
-    debug_core("virtio_disk_rw: avail->idx: %d", avail->idx);
+    // debug_core("virtio_disk_rw: idx %d %d %d", idx[0], idx[1], idx[2]);
+    // debug_core("virtio_disk_rw: avail->idx: %d", avail->idx);
 
     // tell the device the first index in our chain of descriptors.
     avail->ring[avail->idx % NUM] = idx[0];
@@ -265,7 +265,7 @@ task<int> virtio_disk::disk_command(uint64 command,uint64 block_no, uint64 count
 
     // Wait for virtio_disk_intr() to say request has finished.
     while (!info[idx[0]].done) {
-        debug_core("virtio_disk_rw: waiting for request to finish");
+        // debug_core("virtio_disk_rw: waiting for request to finish");
         if (regs->status & VIRTIO_CONFIG_S_DEVICE_NEEDS_RESET) {
             warnf("virtio_disk_rw: device needs reset");
             co_return -1;

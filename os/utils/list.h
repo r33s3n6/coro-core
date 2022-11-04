@@ -3,14 +3,17 @@
 #define UTILS_LIST_H
 
 #include <utility>
+#include <utils/panic.h>
+#include <utils/utility.h>
 
 template <typename data_t>
-class list {
+class list : noncopyable {
    public:
     struct node {
         data_t data;
         node* next;
         node* prev;
+        // char dummy[128];
     };
 
     struct iterator {
@@ -34,7 +37,6 @@ class list {
         tail = new node;
         head->next = tail;
         tail->prev = head;
-
         _size = 0;
     }
 
@@ -42,41 +44,31 @@ class list {
         clear();
         delete head;
         delete tail;
+        head = nullptr;
+        tail = nullptr;
     }
 
-    void push_back(data_t&& data) {
-        node* new_node = new node;
-        new_node->data = std::move(data);
 
-        new_node->next = tail;
-        new_node->prev = tail->prev;
-        tail->prev->next = new_node;
-        tail->prev = new_node;
-
-        _size++;
+    data_t& push_back(){
+        return __push_back()->data;
     }
 
-    void push_back(const data_t& data) {
-        node* new_node = new node;
-        new_node->data = data;
-
-        new_node->next = tail;
-        new_node->prev = tail->prev;
-        tail->prev->next = new_node;
-        tail->prev = new_node;
-
-        _size++;
+    data_t& push_front(){
+        return __push_front()->data;
     }
 
-    void push_front(const data_t& data) {
-        node* new_node = new node;
-        new_node->data = data;
-        new_node->next = head->next;
-        new_node->prev = head;
-        head->next->prev = new_node;
-        head->next = new_node;
+    template <typename X>
+    void push_back(X&& data) {
+        static_assert(std::is_same_v<data_t, std::decay_t<X>>, "X must be the same type of data_t");
+        node* new_node = __push_back();
+        new_node->data = std::forward<X>(data);
+    }
 
-        _size++;
+    template <typename X>
+    void push_front(X&& data) {
+        static_assert(std::is_same_v<data_t, std::decay_t<X>>, "X must be the same type of data_t");
+        node* new_node = __push_front();
+        new_node->data = std::forward<X>(data);
     }
 
     data_t& front() { return head->next->data; }
@@ -114,9 +106,17 @@ class list {
 
     iterator rend() { return iterator(head); }
 
-    void erase(iterator it) { __remove(it.ptr); }
+    void erase(iterator it) { 
+        if (it.ptr == head || it.ptr == tail) {
+            panic("list::erase");
+        }
+        __remove(it.ptr);
+    }
 
     void insert_after(iterator it, const data_t& data) {
+        if (it.ptr == tail) {
+            panic("insert_after: iterator is end()");
+        }
         node* new_node = new node;
         new_node->data = data;
         new_node->next = it.ptr->next;
@@ -127,6 +127,9 @@ class list {
         _size++;
     }
     void insert_before(iterator it, const data_t& data) {
+        if (it.ptr == head) {
+            panic("insert_before: iterator is begin()");
+        }
         node* new_node = new node;
         new_node->data = data;
         new_node->next = it.ptr;
@@ -137,6 +140,12 @@ class list {
         _size++;
     }
     void move_to_front(iterator it) {
+        if (it.ptr == head || it.ptr == tail) {
+            panic("move_to_front: iterator is begin() or end()");
+        }
+        if (it.ptr->prev == head) {
+            return;
+        }
         it.ptr->prev->next = it.ptr->next;
         it.ptr->next->prev = it.ptr->prev;
         it.ptr->next = head->next;
@@ -159,6 +168,30 @@ private:
     node* head;
     node* tail;
     int _size;
+
+    node* __push_back() {
+        node* new_node = new node;
+
+        new_node->next = tail;
+        new_node->prev = tail->prev;
+        tail->prev->next = new_node;
+        tail->prev = new_node;
+
+        _size++;
+        return new_node;
+    }
+
+    node* __push_front() {
+        node* new_node = new node;
+
+        new_node->next = head->next;
+        new_node->prev = head;
+        head->next->prev = new_node;
+        head->next = new_node;
+
+        _size++;
+        return new_node;
+    }
 };
 
 #endif

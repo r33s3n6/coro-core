@@ -377,22 +377,17 @@ file *user_process::get_file(int fd) {
 
 void kernel_process::__kernel_function_caller(void(*func_ptr)(void*), void* arg) {
 
-    debug_core("kernel function caller: %p\n", (void*)func_ptr);
+    //debug_core("kernel function caller: %p\n", (void*)func_ptr);
 
-    // only here kernel can be interrupted by timer
-    // timer::start_timer_interrupt();
-    // enable_kernel_trap();
-
-    // kernel_assert(cpu::local_irq_on() && (r_sie() & SIE_STIE), "timer interrupt is not enabled");
 
     cpu::local_irq_enable();
 
     func_ptr(arg);
 
     cpu::local_irq_disable();
-    // timer::stop_timer_interrupt();
 
-    debug_core("kernel function caller: %p done\n", (void*)func_ptr);
+
+    //debug_core("kernel function caller: %p done\n", (void*)func_ptr);
     
     cpu::__my_cpu()->get_kernel_process()->__set_exit_code(0);
     
@@ -432,7 +427,7 @@ kernel_process::kernel_process(int pid, func_type func, void* arg, uint64 arg_si
 
     _state = RUNNABLE;
 
-    debug_core("kernel process %d created, stack_pa: %p\n", pid, stack_pa);
+    // debug_core("kernel process %d created, stack_top_va: %p\n", pid, stack_top_va);
 }
 
 void kernel_process::__clean_resources(){
@@ -468,9 +463,12 @@ bool kernel_process::run(){
         cpu_ref c = cpu::my_cpu();
         //debug_core("run kernel process %d, state=%d", pid, (int)_state);
 
+        // enable timer interrupt (but not enable interrupt)
         timer::set_next_timer();
         timer::start_timer_interrupt();
+        
         c->save_context_and_switch_to(&_context);
+
         timer::stop_timer_interrupt();
 
         //debug_core("pause kernel process %d, state=%d", pid, (int)_state);

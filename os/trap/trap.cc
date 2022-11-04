@@ -48,7 +48,7 @@ void kernel_interrupt_handler(uint64 scause, uint64 stval, uint64 sepc) {
         irq = c->plic_claim();
         if (irq == VIRTIO0_IRQ) {
             debug_core("virtio0 interrupt");
-            auto dev = device::get<virtio_disk>({VIRTIO_DISK_MAJOR, VIRTIO_DISK_MINOR});
+            auto dev = device::get<virtio_disk>(virtio_disk_id);
             dev->virtio_disk_intr();
             //--  virtio_disk_intr();
         } else if(irq>0) {
@@ -170,7 +170,7 @@ void user_interrupt_handler(uint64 scause, uint64 stval, uint64 sepc) {
             infof("unexpected interrupt irq=UART0_IRQ");
 
         } else if (irq == VIRTIO0_IRQ) {
-            auto dev = device::get<virtio_disk>({VIRTIO_DISK_MAJOR, VIRTIO_DISK_MINOR});
+            auto dev = device::get<virtio_disk>(virtio_disk_id);
             dev->virtio_disk_intr();
         } else if (irq) {
             infof("unexpected interrupt irq=%d", irq);

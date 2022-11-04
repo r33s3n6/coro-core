@@ -102,7 +102,7 @@ void task_scheduler::start() {
         }
 
         
-        debug_core("task_scheduler: try to switch to %p\n", t.get_promise());
+        // debug_core("task_scheduler: try to switch to %p\n", t.get_promise());
         // printf("scheduler: task status: %d\n", t.get_promise()->get_status());
         kernel_assert(cpu::local_irq_on(), "task_scheduler: irq off");
         // all tasks we own, we start it here
