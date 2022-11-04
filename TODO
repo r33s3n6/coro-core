@@ -2,6 +2,8 @@ move constructor use std::swap
 
 wait queue has no locks
 
+interrupts do dynamic memory allocation is dangerous (dead lock)
+
 TODO:
 mm/heap_allocator
 
