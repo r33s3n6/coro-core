@@ -69,7 +69,9 @@ struct block_buffer_node {
         lock.unlock();
         
         // only who hold buffer can access these fields, so no need to lock
-        co_await read_from_device();
+        if(!valid) {
+            co_await read_from_device();
+        }
 
         co_return data;
     }
