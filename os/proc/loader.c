@@ -1,8 +1,11 @@
-#include <ucore/defs.h>
-#include <mem/memory_layout.h>
-#include <proc/proc.h>
+#include <mm/layout.h>
+#include <proc/process.h>
 #include <trap/trap.h>
-#include <ucore/ucore.h>
+#include <ccore/types.h>
+
+#include <mm/allocator.h>
+#include <mm/vmem.h>
+
 static int app_cur, app_num;
 static uint64 *app_info_ptr;
 extern char _app_num[], _app_names[];
@@ -40,26 +43,42 @@ int get_app_id_by_name(char *name)
 }
 
 
-void bin_loader(uint64 start, uint64 end, struct proc *p)
-{
+int user_process::__load_text(uint64 start, uint64 end) {
     debugf("load range = [%p, %p)", start, end);
-    uint64 s = PGROUNDDOWN(start), e = PGROUNDUP(end), length = e - s;
-    for (uint64 va = USER_TEXT_START, pa = s; pa < e; va += PGSIZE, pa += PGSIZE)
-    {
-        void *page = alloc_physical_page();
-        if (page == nullptr)
-        {
-            panic("bin_loader alloc_physical_page");
+    uint64 s = PGROUNDDOWN(start), e = PGROUNDUP(end);
+    uint64 va, pa;
+
+    for (va = USER_TEXT_START, pa = s; pa < e; va += PGSIZE, pa += PGSIZE) {
+        void *page = kernel_allocator.alloc_page();
+        if (page == nullptr) {
+            break;
         }
         memmove(page, (const void *)pa, PGSIZE);
-        if (mappages(p->pagetable, va, PGSIZE, (uint64)page, PTE_U | PTE_R | PTE_W | PTE_X) != 0)
-            panic("bin_loader mappages");
+        if (uvmmap(pagetable, va, (uint64)page, PGSIZE, PTE_U | PTE_R | PTE_X) != 0) {
+            kernel_allocator.free_page(page);
+            break;
+        }
     }
 
-    p->trapframe->epc = USER_TEXT_START;
+    if (pa != e) {
+        // failed, goto cleanup
+        goto err_unmap;
+    }
 
-    p->bin_size = length;
+    trapframe_pa->epc = USER_TEXT_START;
+    text_size = e - s;
+    return 0;
+
+err_unmap:
+    uint64 free_size = va - USER_TEXT_START - PGSIZE;
+    if (free_size > 0) {
+        uvmunmap(pagetable, USER_TEXT_START, free_size, 1);
+    }
+    return -ENOMEM;
 }
+
+
+
 
 void loader(int id, struct proc *p) {
     infof("loader %s", names[id]);

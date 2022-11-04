@@ -2,20 +2,25 @@
 #define ATOMIC_MUTEX_H
 
 #include "spinlock.h"
+#include <utils/wait_queue.h>
 
 class mutex {
 
     
     mutex(const char* name = "unnamed") : _guard_lock(name) {}
 
+    void lock(sleepable* sleeper);
+    void unlock();
+
     private:
     uint32 _locked = false; // Is the lock held?
     spinlock _guard_lock;
-    int _tid = 0; // The thread holding the lock.
-    // const char *_name;
+    int _pid = 0; // The process holding the lock.
+    wait_queue _wait_queue;
+
 };
 
-void init_mutex(struct mutex *mutex);
+
 void acquire_mutex_sleep(struct mutex *mu);
 void release_mutex_sleep(struct mutex *mu);
 int holdingsleep(struct mutex *lk);

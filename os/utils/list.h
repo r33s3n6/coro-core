@@ -2,6 +2,8 @@
 #ifndef UTILS_LIST_H
 #define UTILS_LIST_H
 
+#include <utility>
+
 template <typename data_t>
 class list {
    public:
@@ -40,6 +42,18 @@ class list {
         clear();
         delete head;
         delete tail;
+    }
+
+    void push_back(data_t&& data) {
+        node* new_node = new node;
+        new_node->data = std::move(data);
+
+        new_node->next = tail;
+        new_node->prev = tail->prev;
+        tail->prev->next = new_node;
+        tail->prev = new_node;
+
+        _size++;
     }
 
     void push_back(const data_t& data) {
@@ -102,6 +116,35 @@ class list {
 
     void erase(iterator it) { __remove(it.ptr); }
 
+    void insert_after(iterator it, const data_t& data) {
+        node* new_node = new node;
+        new_node->data = data;
+        new_node->next = it.ptr->next;
+        new_node->prev = it.ptr;
+        it.ptr->next->prev = new_node;
+        it.ptr->next = new_node;
+
+        _size++;
+    }
+    void insert_before(iterator it, const data_t& data) {
+        node* new_node = new node;
+        new_node->data = data;
+        new_node->next = it.ptr;
+        new_node->prev = it.ptr->prev;
+        it.ptr->prev->next = new_node;
+        it.ptr->prev = new_node;
+
+        _size++;
+    }
+    void move_to_front(iterator it) {
+        it.ptr->prev->next = it.ptr->next;
+        it.ptr->next->prev = it.ptr->prev;
+        it.ptr->next = head->next;
+        it.ptr->prev = head;
+        head->next->prev = it.ptr;
+        head->next = it.ptr;
+    }
+
     int size() { return _size; }
 
 
@@ -112,7 +155,7 @@ class list {
         delete node;
         _size--;
     }
-public: //TODO: private:
+private: 
     node* head;
     node* tail;
     int _size;

@@ -18,6 +18,13 @@
 #include <trap/trap.h>
 #include <utils/assert.h>
 
+#include <coroutine.h>
+
+#include <drivers/virtio/virtio_disk.h>
+
+uint8 __attribute__((aligned(PGSIZE))) virtio_disk_pages[2 * PGSIZE];
+virtio_disk vd0(virtio_disk_pages);
+
 
 uint32 magic = 0xdeadbeef;
 
@@ -35,6 +42,15 @@ void clean_bss()
 // deprecated
 void init_globals(){
     kernel_logger.log_file = &sbi_console;
+    int ret = -1;
+    int retry = 3;
+    while(retry && ret){
+        ret = vd0.open((void*)VIRTIO0);
+        retry--;
+    }
+    if(ret){
+        panic("virtio disk open failed");
+    }
     /*
             procinit();
         binit();        // buffer cache
@@ -55,6 +71,7 @@ void init_globals(){
 extern int kernel_coroutine_test();
 extern void print_something();
 extern void test_bind_core(void* arg);
+extern void test_disk_rw(void* arg);
 
 
 // test code
@@ -81,9 +98,14 @@ void idle(){
 void init(){
     infof("init: start");
 
-    // shared_ptr<process> test_proc = make_shared<kernel_process>(kernel_task_queue.alloc_pid(), test_coroutine);
+    // shared_ptr<process> test_proc = make_shared<kernel_process>(kernel_process_queue.alloc_pid(), (kernel_process::func_type)test_coroutine);
     // test_proc->set_name("test_coroutine");
-    // kernel_task_queue.push(test_proc);
+    // kernel_process_queue.push(test_proc);
+
+    shared_ptr<process> test_proc = make_shared<kernel_process>(kernel_process_queue.alloc_pid(), (kernel_process::func_type)test_disk_rw);
+    test_proc->set_name("test_disk_rw");
+    kernel_process_queue.push(test_proc);
+    
 
     for(int i=0;i<10;i++){
 
@@ -93,11 +115,11 @@ void init(){
         } else {
             bind_core = 0;
         }
-        shared_ptr<process> proc = make_shared<kernel_process>(kernel_task_queue.alloc_pid(), test_bind_core, &bind_core, sizeof(bind_core));
+        shared_ptr<process> proc = make_shared<kernel_process>(kernel_process_queue.alloc_pid(), test_bind_core, &bind_core, sizeof(bind_core));
         proc->set_name(("N" + std::to_string(i) + " C" + std::to_string(bind_core)).c_str());
         proc->binding_core = bind_core;
         debug_core("init: push process %s", proc->get_name());
-        kernel_task_queue.push(proc);
+        kernel_process_queue.push(proc);
     }
 
 
@@ -105,8 +127,17 @@ void init(){
     infof("scheduler: init done");
 
     return;
+}
 
+void task_scheduler_run(void* arg) {
+    uint64 id = *(uint64*)arg;
+    kernel_assert(cpu::local_irq_on(), "task_scheduler: irq should be enabled");
 
+    debug_core("task_scheduler: start on core %d", id);
+    
+    kernel_task_scheduler[id].start();
+    kernel_assert(false, "task_scheduler should not return");
+    __builtin_unreachable();
 }
 
 // do not use any global class object here
@@ -169,11 +200,10 @@ extern "C" void kernel_init(uint64 hartid)
     infof("hart %d starting", hartid);
 
     infof("[%d] init scheduler", hartid);
-    kernel_process_scheduler[hartid].set_queue(&kernel_task_queue);
+    kernel_process_scheduler[hartid].set_queue(&kernel_process_queue);
 
 
     // create idle process
-    
     infof("create idle process");
     shared_ptr<process> idle_proc = make_shared<kernel_process>(hartid+1, (kernel_process::func_type)idle);
     idle_proc->binding_core = hartid;
@@ -182,6 +212,17 @@ extern "C" void kernel_init(uint64 hartid)
 
     infof("set idle process");
     kernel_process_scheduler[hartid].last_choice = idle_proc;
+
+    // create task_scheduler process
+    kernel_task_scheduler[hartid].set_queue(&kernel_task_queue);
+    infof("create task_scheduler process");
+    shared_ptr<process> task_scheduler_proc = make_shared<kernel_process>(kernel_process_queue.alloc_pid(), task_scheduler_run, (void*)&hartid, sizeof(hartid));
+    task_scheduler_proc->binding_core = hartid;
+    task_scheduler_proc->set_name("task_scheduler");
+    debugf("task_scheduler_proc %p: state:%d",task_scheduler_proc.get(), task_scheduler_proc->get_state());
+
+    infof("push task_scheduler process");
+    kernel_process_queue.push(task_scheduler_proc);
     
 
     if (hartid == 0){
@@ -191,7 +232,7 @@ extern "C" void kernel_init(uint64 hartid)
         infof("init_proc: ref: %d",init_proc.ref_count->count);
         init_proc->set_name("init");
         debugf("init_proc %p: state:%d", init_proc.get(), init_proc->get_state());
-        kernel_task_queue.push(init_proc);
+        kernel_process_queue.push(init_proc);
         infof("init_proc: ref: %d",init_proc.ref_count->count);
     }
 

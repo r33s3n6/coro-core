@@ -5,7 +5,10 @@ symbol-file build/kernel
 # set disassemble-next-line auto
 display/12i $pc-8
 set riscv use-compressed-breakpoints yes
+
+# entry point
 break *0x1000
+# kernel exception trace
 b __trace_exception__sret
 b panic
 

@@ -295,9 +295,34 @@ task<void> test_logger(std::string log_str){
     co_return task_ok;
 }
 
+struct test_coroutine_kill_struct {
+    int * ref;
+    test_coroutine_kill_struct(int* ref):ref(ref){}
+    ~test_coroutine_kill_struct(){
+        infof("test_coroutine_kill_struct: destructor");
+        (*ref)++;
+    }
+};
 
+task<int> test_coroutine_kill_callee(int* ref){
+    (*ref)++;
+    co_await this_scheduler;
+    co_return task_fail;
+}
 
-extern scheduler kernel_scheduler;
+task<void> test_coroutine_kill(int* ref){
+    
+    test_coroutine_kill_struct t(ref);
+    co_await test_coroutine_kill_callee(ref);
+    co_errorf("test_coroutine_kill: this should not be printed");
+    co_await test_coroutine_kill_callee(ref);
+    co_return task_ok;
+}
+
+// extern task_scheduler kernel_task_scheduler[NCPU];
+task_scheduler test_scheduler;
+task_queue test_queue;
+
 int kernel_coroutine_test() {
     // assert(false,"assert test");
     kernel_assert(global_test.i == 0xf, "global_test.i should be 0xf");
@@ -327,26 +352,35 @@ int kernel_coroutine_test() {
 
     auto test_coro_gen = test_coro_generator(1000000);
 
-    kernel_scheduler.schedule(std::move(t_logger));
+    int test_coroutine_kill_ref = 0;
+    auto test_coroutine_kill_task = test_coroutine_kill(&test_coroutine_kill_ref);
 
-    kernel_scheduler.schedule(std::move(test_coro_gen));
+    test_scheduler.set_queue(&test_queue);
 
-    kernel_scheduler.schedule(std::move(ho));
-    kernel_scheduler.schedule(std::move(ho2));
-    kernel_scheduler.schedule(std::move(tn));
 
-    kernel_scheduler.schedule(std::move(h));
-    kernel_scheduler.schedule(std::move(h4));
-    kernel_scheduler.schedule(std::move(h5));
+    test_scheduler.schedule(std::move(t_logger));
+
+    test_scheduler.schedule(std::move(test_coro_gen));
+
+    test_scheduler.schedule(std::move(ho));
+    test_scheduler.schedule(std::move(ho2));
+    test_scheduler.schedule(std::move(tn));
+
+    test_scheduler.schedule(std::move(h));
+    test_scheduler.schedule(std::move(h4));
+    test_scheduler.schedule(std::move(h5));
+
+    test_scheduler.schedule(std::move(test_coroutine_kill_task));
 
 
     test_normal_generator(1000000);
 
     kernel_console_logger.printf("main: test scheduler start\n");
-    kernel_scheduler.start();
+    test_scheduler.start();
 
     kernel_console_logger.printf("main: test: %d\n", test);
     kernel_assert(test==39, "test should be 3+1+35");
+    kernel_assert(test_coroutine_kill_ref==2, "test_coroutine_kill_ref should be 2");
     return test;
 }
 

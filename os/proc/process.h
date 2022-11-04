@@ -114,9 +114,15 @@ class user_process : public process {
     pagetable_t pagetable = nullptr;  // User page table
 
     
-
+    protected:
     uint64 text_size = 0;             // size of text segment (bytes)
     uint64 heap_size = 0;             // heap memory used by this process
+
+    uint64 min_va = 0;              // min virtual address
+    uint64 max_va = 0;              // max virtual address
+    uint64 stack_va = 0;            // Virtual address of stack
+    uint64 heap_va = 0;             // Virtual address of heap
+    uint64 brk_va = 0;              // Virtual address of brk
     
     file *files[FD_MAX] {nullptr};    // Opened files
     dentry *cwd = nullptr;            // Current directory
@@ -133,6 +139,7 @@ class user_process : public process {
     
 
     void exec(const char *path, char *const argv[]);
+    
 
     void wait_children();
     bool check_killed();
@@ -141,9 +148,10 @@ class user_process : public process {
     int  __init_pagetable();
     void __free_pagetable();
 
-    
     void __close_files();
 
+    int __load_text(uint64 start, uint64 end);
+    int __load_elf(uint64 start, uint64 size);
 
     public:
     file* get_file(int fd);

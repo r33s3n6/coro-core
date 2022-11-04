@@ -108,6 +108,13 @@ static void __function_caller(std::function<void()>* func_ptr) {
     __builtin_unreachable();
 }
 
+void cpu::yield() {
+    // there's no need to save interrupt state,
+    // because on next run, it will be set properly by scheduler
+    kernel_assert(!cpu::local_irq_on(), "local_irq should be disabled when yield");
+    switch_back(get_kernel_process()->get_context());
+}
+
 void cpu::switch_back(context* current) {
     kernel_assert(
         !cpu::local_irq_on() || (cpu::local_irq_on() && !(r_sie() & SIE_STIE)),

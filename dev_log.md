@@ -144,12 +144,23 @@ make: *** [Makefile:77: build/os/utils/fprintf.o] Error 1
 
 #### 进展
 
-1. 重写了`process`，现在分为`kernel_process`和`user_process`。`kernel`中只有在运行`kernel_process`时才打开时钟中断。
+1. 重写了`process`，现在分为`kernel_process`和`user_process`。`kernel`中只有在运行`kernel_process`时才打开时钟中断。（异步的系统调用足够短，可以忽略时钟中断，阻塞的系统调用会把进程设为睡眠状态，并切换到其他进程，在中间的处理过程也足够短。）既然足够短，无需为每一个进程分配一个内存栈，只需要为每个`cpu`分配一个共享的内核栈，在`user_trap`的时候使用
+
+2. 目前的想法是父进程退出杀死所有子进程，但调度器可能拥有对子进程的指针，因此不清楚什么时候要释放资源。现在直接用了智能指针。
+
+   
+
+#### 问题
+
+1. 现在还有一些`data race`
 
 
+### 第七周(10.24-10.30)
 
-问题
-```
+#### 进展
+
+#### 问题
+```c++
 void cpu::push_off(){
     int old = intr_get();
 
@@ -161,4 +172,33 @@ void cpu::push_off(){
 }
 ```
 
-`csrrc`
+实际上这两个操作不是原子的，可能会导师intr_get()的结果不正确。例如在获取完后被调度到另一个cpu上。
+实际做这件事需要使用它的原子版本:`csrrc`,这里仿照了linux的做法
+
+```c++
+static int local_irq_save(){
+    int old = rc_sstatus(SSTATUS_SIE);
+    return old;
+}
+
+static void local_irq_restore(int old){
+    s_sstatus(old & SSTATUS_SIE);
+}
+```
+
+```c++
+static inline uint64 rc_sstatus(uint64 val){
+    unsigned long __v = (unsigned long)(val);		
+	__asm__ __volatile__ ("csrrc %0, sstatus, %1"
+			      : "=r" (__v) : "rK" (__v)		
+			      : "memory");			
+	return __v;	
+}
+
+static inline void s_sstatus(uint64 val){
+    unsigned long __v = (unsigned long)(val);		
+	__asm__ __volatile__ ("csrs sstatus, %0"	
+			      : : "rK" (__v)			
+			      : "memory");	
+}
+```

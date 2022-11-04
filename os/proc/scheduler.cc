@@ -7,7 +7,7 @@
 #include <arch/cpu.h>
 #include <utils/assert.h>
 
-task_queue kernel_task_queue;
+process_queue kernel_process_queue;
 
 process_scheduler kernel_process_scheduler[NCPU];
 
@@ -33,7 +33,7 @@ int stride_cmp(uint64 a, uint64 b)
 	}
 }
 
-shared_ptr<process> task_queue::pop(int core_id) {
+shared_ptr<process> process_queue::pop(int core_id) {
     auto guard = make_lock_guard(lock);
 
     if(queue.empty()){
@@ -46,17 +46,21 @@ shared_ptr<process> task_queue::pop(int core_id) {
     uint64 min_stride = 0;
     
     for(auto it = queue.begin(); it != queue.end(); ++it) {
-        if(!(*it)->ready()){
+        auto& proc = *it;
+        if(!proc->ready()){
             // debugf("process %p:( name: %s ) not ready" , (*it).get(), (*it)->get_name());
             continue;
         }
-        if((*it)->binding_core!=-1 && (*it)->binding_core!=core_id){
+        if(proc->binding_core!=-1 && proc->binding_core!=core_id){
             // debugf("core %d: skip process %s, binding core %d", core_id, (*it)->get_name(), (*it)->binding_core);
             continue;
         }
-        if (min_it == queue.end() || stride_cmp((*it)->stride, min_stride) < 0) {
+        if(proc->get_state()==process::state::SLEEPING){
+            continue;
+        }
+        if (min_it == queue.end() || stride_cmp(proc->stride, min_stride) < 0) {
             // debugf("core %d: update min stride %d", core_id, (*it)->stride);
-            min_stride = (*it)->stride;
+            min_stride = proc->stride;
             min_it = it;
         }
     }
@@ -72,7 +76,7 @@ shared_ptr<process> task_queue::pop(int core_id) {
     return ret;
 }
 
-void task_queue::push(const shared_ptr<process>& proc) {
+void process_queue::push(const shared_ptr<process>& proc) {
     auto guard = make_lock_guard(lock);
     queue.push_back(proc);
     // debug_core("push process %p: name: %s, queue_size:%d", proc.get(), proc->get_name(), queue.size());

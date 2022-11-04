@@ -1,5 +1,6 @@
 move constructor use std::swap
 
+wait queue has no locks
 
 TODO:
 mm/heap_allocator

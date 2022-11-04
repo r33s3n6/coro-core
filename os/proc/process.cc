@@ -28,6 +28,7 @@ void process::sleep() {
     }
     _state = SLEEPING;
     lock.unlock();
+
 }
 
 void process::wake_up() {
@@ -44,7 +45,7 @@ void process::wake_up() {
 void process::pause(){
     lock.lock();
     if(_state == RUNNING) {
-        _state = SLEEPING;
+        _state = RUNNABLE;
     }
     lock.unlock();
 

@@ -11,11 +11,11 @@ static const uint64 BIG_STRIDE = 0x7FFFFFFFLL;
 void init_schedulers();
 
 // TODO: use a priority queue
-class task_queue {
+class process_queue {
     list<shared_ptr<process>> queue;
-    spinlock lock {"task_queue.lock"};
+    spinlock lock {"process_queue.lock"};
 
-    spinlock pid_lock {"task_queue.pid_lock"};
+    spinlock pid_lock {"process_queue.pid_lock"};
     int next_pid = NCPU + 1; // skip idle process and init process
 public:
     shared_ptr<process> pop(int core_id);
@@ -28,15 +28,15 @@ public:
 };
 
 class process_scheduler {
-    task_queue* shared_queue;
+    process_queue* shared_queue;
     public:
     // process_scheduler::process_scheduler(task_queue* q);
-    void set_queue(task_queue* q) { shared_queue = q; }
+    void set_queue(process_queue* q) { shared_queue = q; }
     void run();
     shared_ptr<process> last_choice;
 };
 
-extern task_queue kernel_task_queue;
+extern process_queue kernel_process_queue;
 extern process_scheduler kernel_process_scheduler[NCPU];
 
 #endif //PROC_SCHEDULER_H

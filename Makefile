@@ -7,7 +7,7 @@ endif
 
 K = os
 #U = user
-#F = nfs
+F = nfs
 
 TOOLPREFIX = riscv64-unknown-elf-
 CXX = $(TOOLPREFIX)g++
@@ -102,7 +102,7 @@ clean:
 
 # BOARD
 BOARD		?= qemu
-# SBI			?= rustsbi
+# SBI			?= opensbi
 # BOOTLOADER	:= ./bootloader/rustsbi-qemu.bin
 BOOTLOADER	:= ./bootloader/fw_jump.bin
 
@@ -112,9 +112,9 @@ QEMUOPTS = \
 	-smp $(CPUS) \
 	-machine virt \
 	-bios $(BOOTLOADER) \
-	-kernel build/kernel#	\
-	#-drive file=$(F)/fs-copy.img,if=none,format=raw,id=x0 \
-    #-device virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0
+	-kernel build/kernel	\
+	-drive file=$(F)/fs-copy.img,if=none,format=raw,id=x0 \
+    -device virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0
 
 
 run: build/kernel
@@ -126,7 +126,7 @@ QEMUGDB = $(shell if $(QEMU) -help | grep -q '^-gdb'; \
 	else echo "-s -p 15234"; fi)
 
 debug: build/kernel .gdbinit
-	# $(CP) $(U)/fs.img $(U)/fs-copy.img
+	#$(CP) $(U)/fs.img $(U)/fs-copy.img
 	$(QEMU) $(QEMUOPTS) -S $(QEMUGDB) &
 	sleep 1
 	$(GDB)

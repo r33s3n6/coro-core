@@ -12,7 +12,13 @@
 #include <utils/panic.h>
 #include <utils/utility.h>
 
-struct scheduler;
+#include <utils/sleepable.h>
+#include <utils/list.h>
+
+#include <arch/config.h>
+#include <atomic/lock.h>
+
+struct task_scheduler;
 
 template <typename T = void>
 struct optional_storage;
@@ -49,7 +55,7 @@ struct optional_storage : public optional_storage<void> {
     }
     template <std::convertible_to<T> from_t>
     void set_value(from_t&& v){
-        value = std::forward<T>(v);
+        value = std::forward<from_t>(v);
         has_value=true;
     }
 };
@@ -71,7 +77,7 @@ struct promise_base;
 // task destruct the promise if it is the owner
 // task_base will never destruct promise
 // destruct function is defined in the derived class
-struct task_base : noncopyable {
+struct task_base : noncopyable, sleepable {
     using promise_type = promise_base;
     // take the ownership of the coroutine
     task_base(task_base&& t);
@@ -112,6 +118,12 @@ struct task_base : noncopyable {
         _owner = false;
     }
 
+    void sleep() {
+        // do nothing
+    }
+
+    void wake_up();
+
    protected:
     promise_type* _promise;
     bool alloc_fail;
@@ -126,7 +138,7 @@ struct promise_base {
     task_base caller {};
 
     // where we schedule ourselves to
-    scheduler* self_scheduler = nullptr;
+    task_scheduler* self_scheduler = nullptr;
 
     // if our caller can handle error, if so,
     // when we or our callee fail, we resume our caller
@@ -236,7 +248,7 @@ struct promise : public promise_base {
     void return_value(from_t&& from,
                       std::enable_if_t<!std::is_same_v<T, void>, void*> = 0) {
         // result.value = std::forward<return_type>(from);
-        result.set_value(std::forward<return_type>(from));
+        result.set_value(std::forward<from_t>(from));
         _status = done;
     }
 
@@ -397,14 +409,27 @@ struct task : task_base {
 
 task<void> __task_executor(promise<void>* p);
 
-// TODO fix ownership problem
-struct scheduler {
-    std::deque<task_base> task_queue;
+class task_queue {
+    list<task_base> queue;
+    spinlock lock {"task_queue.lock"};
+
+public:
+    task_base pop();
+    void push(task_base&& proc);
+    bool empty() { 
+        return queue.empty();
+    }
+    
+};
+
+
+struct task_scheduler {
+    // std::deque<task_base> task_queue;
+    task_queue* _task_queue;
 
     void schedule(task_base&& h) {
         // let them clear themselves on final_suspend
         if(!h){
-            // printf("scheduler: empty task\n");
             return;
         }
 
@@ -415,17 +440,19 @@ struct scheduler {
             // we wrap the task with a task_executor
             task_base buf = std::move(h); // take the ownership of the coroutine
             h = __task_executor((promise<void>*)buf.get_promise());
-            // tb = __task_executor(buf.);
-            // __printf("scheduler: schedule task_executor %p\n", h.get_promise());
         }
        
         h.get_promise()->self_scheduler = this;
-        task_queue.emplace_back(std::move(h));
+        _task_queue->push(std::move(h));
     }
 
-    bool is_free() { return task_queue.empty(); }
+    bool is_free() { return _task_queue->empty(); }
 
     void start();
+
+    void set_queue(task_queue* q) {
+        _task_queue = q;
+    }
 };
 
 
@@ -441,7 +468,7 @@ struct this_scheduler_t {
             return h.get_handle(); // resume immediately
         }
 
-        scheduler* s = p->self_scheduler;
+        task_scheduler* s = p->self_scheduler;
 
         if (!s || s->is_free()) {
             return h.get_handle(); // resume immediately
@@ -456,18 +483,23 @@ struct this_scheduler_t {
 };
 inline constexpr this_scheduler_t this_scheduler{
     this_scheduler_t::_Construct::_Token};
-/*
+
+
+
 struct get_taskbase_t {
     bool await_ready() { return false; }
 
     task_base _task;
     bool await_suspend(task_base h) {
-        _task = h;
+        _task = std::move(h);
         return false;
     }
     task_base await_resume() {
-        return _task;
+        return std::move(_task);
     }
-};*/
+};
+
+extern task_queue kernel_task_queue;
+extern task_scheduler kernel_task_scheduler[NCPU];
 
 #endif

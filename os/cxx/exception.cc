@@ -74,6 +74,9 @@ namespace std{
   void
   __throw_bad_function_call() {panic("exception from standard library!\n");}
 
+  void 
+  __throw_bad_optional_access() {panic("exception from standard library!\n");}
+
     struct nothrow_t {
         explicit nothrow_t() = default;
     };

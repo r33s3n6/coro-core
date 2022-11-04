@@ -7,6 +7,9 @@
 #include <utils/log.h>
 #include <utils/assert.h>
 
+#include <device/device.h>
+#include <drivers/virtio/virtio_disk.h>
+
 #include "trap.h"
 
 
@@ -44,6 +47,9 @@ void kernel_interrupt_handler(uint64 scause, uint64 stval, uint64 sepc) {
     case SupervisorExternal:
         irq = c->plic_claim();
         if (irq == VIRTIO0_IRQ) {
+            debug_core("virtio0 interrupt");
+            auto dev = device::get<virtio_disk>({VIRTIO_DISK_MAJOR, VIRTIO_DISK_MINOR});
+            dev->virtio_disk_intr();
             //--  virtio_disk_intr();
         } else if(irq>0) {
             warnf("unexpected interrupt irq=%d", irq);
@@ -164,7 +170,8 @@ void user_interrupt_handler(uint64 scause, uint64 stval, uint64 sepc) {
             infof("unexpected interrupt irq=UART0_IRQ");
 
         } else if (irq == VIRTIO0_IRQ) {
-            //--  virtio_disk_intr();
+            auto dev = device::get<virtio_disk>({VIRTIO_DISK_MAJOR, VIRTIO_DISK_MINOR});
+            dev->virtio_disk_intr();
         } else if (irq) {
             infof("unexpected interrupt irq=%d", irq);
         }

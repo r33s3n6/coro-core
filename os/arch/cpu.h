@@ -1,9 +1,7 @@
 #ifndef ARCH_CPU_H
 #define ARCH_CPU_H
 
-#ifndef NCPU
-#define NCPU 4
-#endif  // NCPU
+#include "config.h"
 
 #define SAMPLE_SLOT_COUNT 8
 
@@ -159,7 +157,7 @@ class cpu {
     void set_process(process* p){
         current_process = p;
     }
-
+    void yield();
     void switch_back(context* c);
     void save_context_and_run(std::function<void()> func);
     void save_context_and_switch_to(context* next);

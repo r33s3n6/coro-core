@@ -26,9 +26,11 @@ pagetable_t kvmmake() {
     // kvmmap(kpgtbl, UART0, UART0, PGSIZE, PTE_R | PTE_W);
 
     // virtio mmio disk interface
+    debugf("virtio_disk va=%p pa=%p", VIRTIO0, VIRTIO0);
     kvmmap(kpgtbl, VIRTIO0, VIRTIO0, PGSIZE, PTE_R | PTE_W);
 
     // PLIC
+    debugf("plic va=%p pa=%p", PLIC, PLIC);
     kvmmap(kpgtbl, PLIC, PLIC, 0x400000, PTE_R | PTE_W);
 
     // map kernel text executable and read-only.

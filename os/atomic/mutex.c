@@ -1,7 +1,20 @@
 #include "mutex.h"
 #include <arch/riscv.h>
-#include <proc/proc.h>
+#include <proc/process.h>
 #include <ccore/types.h>
+
+#include <utils/assert.h>
+
+void mutex::lock(sleepable* sleeper) {
+    // process* p = cpu::my_cpu()->get_current_process();
+    // kernel_assert(p != nullptr, "lock() called from interrupt context");
+    _guard_lock.lock();
+    while (_locked) {
+        _guard_lock.unlock();
+        _wait_queue.sleep(sleeper);
+        _guard_lock.lock();
+    }
+}
 
 
 void acquire_mutex_sleep(struct mutex *mu) {
