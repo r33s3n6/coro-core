@@ -107,6 +107,8 @@ void task_scheduler::start() {
         kernel_assert(cpu::local_irq_on(), "task_scheduler: irq off");
         // all tasks we own, we start it here
         t.resume();
+
+        // debugf("task_scheduler: switch done");
         // we do not track the status of tasks
 
     }

@@ -90,8 +90,11 @@ bool run_process(process* p) {
     uint64 sstatus = r_sstatus();
     uint64 stvec = r_stvec();
 
-    
+    __sync_synchronize();
+
     reschedule = p->run();
+
+    __sync_synchronize();
 
     // restore interrupt state
     w_sie(sie);

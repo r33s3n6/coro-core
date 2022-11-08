@@ -19,21 +19,33 @@ class wait_queue {
             return false; 
         }
         std::coroutine_handle<> await_suspend(task_base h) {
-            promise_base* p = h.get_promise();
-            if(p->no_yield) {
-                return h.get_handle(); // resume immediately
-            }
-
             caller = std::move(h);
 
+            promise_base* p = caller.get_promise();
+
+            if(p->no_yield) {
+                lock.unlock();
+                return caller.get_handle(); // resume immediately
+            }
+
             wq->sleep(&caller);
+
             lock.unlock();
+            
+            __sync_synchronize();
 
             // switch back to scheduler
             return std::noop_coroutine();
         }
         void await_resume() {
+            
+            if (!caller.get_promise()->no_yield) {
+                __sync_synchronize();
+            }
+
             lock.lock();
+
+
         }
     };
     private:
@@ -76,20 +88,31 @@ class single_wait_queue {
             return false; 
         }
         std::coroutine_handle<> await_suspend(task_base h) {
-            promise_base* p = h.get_promise();
-            if(p->no_yield) {
-                return h.get_handle(); // resume immediately
-            }
-
+            
             caller = std::move(h);
 
+            promise_base* p = caller.get_promise();
+
+            if(p->no_yield) {
+                lock.unlock();
+                return caller.get_handle(); // resume immediately
+            }
+
             wq->sleep(&caller);
+
             lock.unlock();
+            
+            __sync_synchronize();
 
             // switch back to scheduler
             return std::noop_coroutine();
         }
         void await_resume() {
+            
+            if (!caller.get_promise()->no_yield) {
+                __sync_synchronize();
+            }
+
             lock.lock();
         }
     };

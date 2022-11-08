@@ -2,15 +2,18 @@
 #define FS_INODE_H
 
 #include <string>
-#include <list>
 
 #include <ccore/types.h>
 #include <ccore/errno.h>
 
 #include <coroutine.h>
 #include <atomic/lock.h>
+#include <atomic/mutex.h>
 
 #include <utils/utility.h>
+#include <utils/list.h>
+
+#include <device/device.h>
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
@@ -18,33 +21,35 @@
 class inode;
 
 class dentry {
-    std::string name;
+    const char* name;
     inode* _inode;
     dentry* parent;
-    std::list<dentry*> children;
+    list<dentry*> children;
 };
 
-
-
 // coroutine inode
-class inode {
+class inode : noncopyable {
 
 public:
+    struct metadata_t {
+        uint32 size;
+        uint16 nlinks;
+        uint8 perm;
+        uint8 type;
+    };
+
     inode(){}
+    inode(device_id_t _device_id, uint64 _inode_number) : device_id(_device_id), inode_number(_inode_number) {}
     virtual ~inode() {}
-
-    // no copy to maintain the reference count
-    // TODO: inode_ref
-    inode(const inode&) = delete;
-
-// suppress unused variable warning
-
-
     
     // inode operations
+    // normally, these operations are called for file operations
     virtual task<int32> truncate(int64 size)  { co_return -EPERM; };
-
+    virtual task<int64> read(void *buf, uint64 offset, uint64 size)  { co_return -EPERM; };
+    virtual task<int64> write(const void *buf, uint64 offset, uint64 size)  { co_return -EPERM; };
+    virtual task<const metadata_t*> get_metadata()  { co_return nullptr; };
     
+    // we assume current inode is a directory
     virtual task<int32> create(dentry* new_dentry)  { co_return -EPERM; };
     virtual task<int32> link(dentry* old_dentry, dentry* new_dentry)  { co_return -EPERM; };
     virtual task<int32> symlink(dentry* old_dentry, dentry* new_dentry)  { co_return -EPERM; };
@@ -52,28 +57,52 @@ public:
     virtual task<int32> mkdir(dentry* new_dentry)  { co_return -EPERM; };
     virtual task<int32> rmdir(dentry* old_dentry)  { co_return -EPERM; };
 
-
-
     // sync from disk to memory
     virtual task<int32> load()  { co_return -EPERM; };
+    virtual task<int32> flush()  { co_return -EPERM; };
 
+    void inc_ref() {
+        auto guard = make_lock_guard(ref_lock);
+        reference_count++;
+    }
 
+    void dec_ref() {
+        auto guard = make_lock_guard(ref_lock);
+        reference_count--;
+    }
 
-    public:
-    spinlock rw_lock;
+    uint64 get_ref() {
+        auto guard = make_lock_guard(ref_lock);
+        return reference_count;
+    }
 
 public:
-    
-    uint32 device_number;
-    uint32 inode_number;
+    // spinlock rw_lock;
+    coro_mutex rw_lock {"inode.rw_lock"};
+    spinlock ref_lock {"inode.ref_lock"};
+
+public:
+    // for kernel inode buffer, and metadata
     int32 reference_count = 0;
-    
-    bool valid;
+    device_id_t device_id;
+    uint32 inode_number;
+
+    // metadata
+protected:
+    bool metadata_valid = false;
+    bool metadata_dirty = false;
+    metadata_t metadata;
 
 
 };
 
 class file {
+    public:
+    enum class whence_t {
+        SET,
+        CUR,
+        END
+    };
 
     public:
         // file operations
@@ -82,11 +111,15 @@ class file {
     virtual task<int64> read(void *buf, uint64 size)  { co_return -EPERM; };
     virtual task<int64> write(const void *buf, uint64 size)  { co_return -EPERM; };
 
-    virtual task<int64> llseek(int64 offset, uint32 whence)  { co_return -EPERM; };
+    virtual task<int64> llseek(int64 offset, whence_t whence)  { co_return -EPERM; };
     
-    virtual task<int32> flush()  { co_return -EPERM; };
+    // virtual task<int32> flush()  { co_return -EPERM; };
 
     virtual task<int64> tell()  { co_return -EPERM; };
+
+    file(){}
+    virtual ~file() {}
+
 
 
     public:
@@ -103,8 +136,8 @@ class file {
             f->in_rw = false;
         }
 
-        void lock() {
-            f->__file_rw_lock.lock();
+        task<void> lock() {
+            co_await f->__file_rw_lock.lock();
             f->in_rw = true;
         }
 
@@ -121,10 +154,11 @@ class file {
         file* f;
         __file_rw_lock_t(file* f) : f(f) {
         }
-        void lock() {
+        task<void> lock() {
             if(!f->in_rw){
-                f->_inode->rw_lock.lock();
+                co_await f->_inode->rw_lock.lock();
             }
+            co_return task_ok;
         }
 
         void unlock() {
@@ -139,12 +173,78 @@ class file {
 
 
     protected:
-    dentry *_dentry;
-    inode *_inode; // cached inode
+    dentry *parent = nullptr; // parent dentry
+    inode *_inode = nullptr; // related inode
+    uint64 offset = 0;
 
     private:
     bool in_rw = false;
 };
+
+class simple_file : public file {
+    public:
+
+    simple_file(inode* _inode){
+       this->_inode = _inode;
+    }
+
+    task<int32> open() override {
+        _inode->inc_ref();
+        offset = 0;
+        co_return 0;
+    }
+
+    task<int32> close() override {
+        _inode->dec_ref();
+        co_return 0;
+    }
+
+    task<int64> read(void *buf, uint64 size) override {
+        co_await __file_rw_lock.lock();
+        auto ret = *co_await _inode->read(buf, offset, size);
+        __file_rw_lock.unlock();
+        if(ret > 0){
+            offset += ret;
+        }
+        co_return ret;
+    }
+
+    task<int64> write(const void *buf, uint64 size) override {
+        co_await __file_rw_lock.lock();
+        auto ret = *co_await _inode->write(buf, offset, size);
+        __file_rw_lock.unlock();
+        if(ret > 0){
+            offset += ret;
+        }
+        co_return ret;
+    }
+
+    task<int64> llseek(int64 offset, whence_t whence) override {
+        switch(whence){
+            case whence_t::SET:
+                this->offset = offset;
+                break;
+            case whence_t::CUR:
+                this->offset += offset;
+                break;
+            case whence_t::END: {
+                auto ret = co_await _inode->get_metadata();
+                uint32 size = (*ret)->size;
+                this->offset = size + offset;
+                break;
+            }
+        }
+        co_return this->offset;
+    }
+
+
+    task<int64> tell() override {
+        co_return offset;
+    }
+
+
+};
+
 
 #pragma GCC diagnostic pop
 

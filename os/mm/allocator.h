@@ -123,6 +123,7 @@ class allocator {
 };
 
 extern allocator kernel_allocator;
+extern allocator kernel_io_allocator;
 
 template <int size>
 class heap_allocator;
@@ -130,7 +131,7 @@ class heap_allocator;
 template <int size>
 struct heap_block_t {
     
-    struct __heap_block_info_t {
+    struct __attribute__((aligned(size))) __heap_block_info_t {
         uint16 _size = size;
         uint16 used = 0;
         uint32 next_free_index = 0;

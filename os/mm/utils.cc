@@ -28,9 +28,10 @@ void* memcpy(void* dest, const void* src, std::size_t n) {
 }
 
 void* memset(void* s, int c, std::size_t n) {
-    char* p = (char*)s;
+    uint8* p = (uint8*)s;
+    uint8 uc = c;
     for (std::size_t i = 0; i < n; i++) {
-        p[i] = c;
+        p[i] = uc;
     }
     return s;
 }

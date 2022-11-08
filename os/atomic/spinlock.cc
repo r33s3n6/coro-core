@@ -5,6 +5,7 @@
 #include <utils/panic.h>
 #include <utils/log.h>
 
+// #define SPINLOCK_TIMEOUT_CHECK
 
 // Acquire the lock.
 // Loops (spins) until the lock is acquired.
@@ -21,18 +22,16 @@ void spinlock::lock() {
         panic("This cpu is acquiring a acquired lock");
     }
 
-    #ifdef TIMEOUT
+    #ifdef SPINLOCK_TIMEOUT_CHECK
     uint64 start = r_cycle();
     #endif
 
     while (__sync_lock_test_and_set(&_locked, 1) != 0)
         {
-    #ifdef TIMEOUT
+    #ifdef SPINLOCK_TIMEOUT_CHECK
             uint64 now = r_cycle();
-            if(now-start > SECOND_TO_CYCLE(10)){
-                kernel_console_logger.printf<false>(
-                    logger::log_level::ERROR, 
-                    "timeout lock name: %s, hold by cpu %d", _name, _cpu->get_core_id());
+            if(now-start > timer::SECOND_TO_CYCLE(3)) {
+                __errorf("timeout lock name: %s, hold by cpu %d", _name, id);
                 panic("spinlock timeout");
             }
     #endif

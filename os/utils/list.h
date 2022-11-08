@@ -32,6 +32,22 @@ class list : noncopyable {
         data_t& operator*() { return ptr->data; }
     };
 
+    struct reverse_iterator {
+        node* ptr;
+        reverse_iterator(node* ptr) : ptr(ptr) {}
+        reverse_iterator& operator++() {
+            ptr = ptr->prev;
+            return *this;
+        }
+        reverse_iterator& operator--() {
+            ptr = ptr->next;
+            return *this;
+        }
+        bool operator==(const reverse_iterator& rhs) { return ptr == rhs.ptr; }
+        bool operator!=(const reverse_iterator& rhs) { return ptr != rhs.ptr; }
+        data_t& operator*() { return ptr->data; }
+    };
+
     list() {
         head = new node;
         tail = new node;
@@ -90,8 +106,11 @@ class list : noncopyable {
     bool empty() { return head->next == tail; }
 
     void clear() {
-        for (auto it = begin(); it != end(); ++it) {
-            delete it.ptr;
+        node* current= head->next;
+        while(current != tail){
+            node* next = current->next;
+            delete current;
+            current = next;
         }
         _size = 0;
         head->next = tail;
@@ -102,9 +121,49 @@ class list : noncopyable {
 
     iterator end() { return iterator(tail); }
 
-    iterator rbegin() { return iterator(tail->prev); }
+    reverse_iterator rbegin() { return reverse_iterator(tail->prev); }
 
-    iterator rend() { return iterator(head); }
+    reverse_iterator rend() { return reverse_iterator(head); }
+
+    void merge(list& other, iterator other_it) {
+        if (other_it == other.end()) {
+            return;
+        }
+        // detach other_it
+        node* other_it_prev = other_it.ptr->prev;
+        node* other_it_next = other_it.ptr->next;
+
+        other_it_prev->next = other_it_next;
+        other_it_next->prev = other_it_prev;
+
+        // attach other_it
+        tail->prev->next = other_it.ptr;
+        other_it.ptr->prev = tail->prev;
+
+        tail->prev = other_it.ptr;
+        other_it.ptr->next = tail;
+
+        _size += 1;
+        other._size -= 1;
+
+    }
+
+    void merge(list& other) {
+        if (other.empty()) {
+            return;
+        }
+        tail->prev->next = other.head->next;
+        other.head->next->prev = tail->prev;
+
+        tail->prev = other.tail->prev;
+        other.tail->prev->next = tail;
+
+        _size += other._size;
+
+        other.head->next = other.tail;
+        other.tail->prev = other.head;
+        other._size = 0;
+    }
 
     void erase(iterator it) { 
         if (it.ptr == head || it.ptr == tail) {
@@ -139,19 +198,14 @@ class list : noncopyable {
 
         _size++;
     }
+
+
     void move_to_front(iterator it) {
-        if (it.ptr == head || it.ptr == tail) {
-            panic("move_to_front: iterator is begin() or end()");
-        }
-        if (it.ptr->prev == head) {
-            return;
-        }
-        it.ptr->prev->next = it.ptr->next;
-        it.ptr->next->prev = it.ptr->prev;
-        it.ptr->next = head->next;
-        it.ptr->prev = head;
-        head->next->prev = it.ptr;
-        head->next = it.ptr;
+        __move_to_front(it.ptr);
+    }
+
+    void move_to_front(reverse_iterator it) {
+        __move_to_front(it.ptr);
     }
 
     int size() { return _size; }
@@ -192,6 +246,22 @@ private:
         _size++;
         return new_node;
     }
+
+    void __move_to_front(node* ptr) {
+        if (ptr == head || ptr == tail) {
+            panic("__move_to_front: iterator is begin() or end()");
+        }
+        if (ptr->prev == head) {
+            return;
+        }
+        ptr->prev->next = ptr->next;
+        ptr->next->prev = ptr->prev;
+        ptr->next = head->next;
+        ptr->prev = head;
+        head->next->prev = ptr;
+        head->next = ptr;
+    }
+
 };
 
 #endif

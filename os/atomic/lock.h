@@ -1,8 +1,9 @@
 #ifndef ATOMIC_LOCK_H
 #define ATOMIC_LOCK_H
 
-// #include "mutex.h"
+
 #include "spinlock.h"
+// #include "mutex.h"
 
 void __debug_enable();
 void __debug_disable();

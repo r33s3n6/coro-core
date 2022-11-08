@@ -6,6 +6,8 @@
 
 #include <utils/wait_queue.h>
 #include <utils/list.h>
+#include <utils/utility.h>
+
 #include <device/device.h>
 
 #include <coroutine.h>
@@ -13,12 +15,13 @@
 
 #include "bdev.h"
 
-struct block_buffer_node {
+struct block_buffer_node : noncopyable {
     bool valid = false; // has data been read from disk?
-    // int disk_is_reading;  // does disk "own" buf?
+
     bool in_use = false;
     bool dirty = false;
-    // device_id_t device_id;
+    // bool destroyed = false; // device unmounted
+    bool dying = false;
     block_device * bdev;
     uint64 block_no;
     uint64 reference_count = 0;
@@ -27,73 +30,81 @@ struct block_buffer_node {
     spinlock lock {"block_buffer_node.lock"};
     // block_buffer_node(block_device* bdev, uint64 block_no) : bdev(bdev), block_no(block_no) {}
     block_buffer_node() {
-        data = new uint8[block_device::BLOCK_SIZE];
-    }
-    ~block_buffer_node() {
-        delete[] data;
     }
 
-    
-    task<void> write_to_device() {
-        if(!bdev){
-            co_return task_fail;
+    ~block_buffer_node() {
+        if (data) {
+            delete[] data;
         }
-        if(dirty) {
+        
+    }
+    private:
+    // you should call this while in use
+    task<void> __sync_to_device() {
+        if(valid && dirty) {
             co_await bdev->write(block_no, 1, data);
             dirty = false;
         }
         co_return task_ok;
     }
-
-    task<void> read_from_device() {
-        if(!bdev){
-            co_return task_fail;
-        }
+    // you should call this while in use
+    task<void> __sync_from_device() {
+        
         if(!valid) {
             co_await bdev->read(block_no, 1, data);
             valid = true;
         }
         co_return task_ok;
     }
-    private:
+
+    void inc_ref() {
+        lock.lock();
+        reference_count++;
+        lock.unlock();
+    }
+    void dec_ref() {
+        lock.lock();
+        if(reference_count == 0) {
+            panic("block_buffer_node::dec_ref: reference_count == 0");
+        }
+        reference_count--;
+        lock.unlock();
+    }
+
     
     friend class block_buffer_node_ref;
-    task<uint8*> __get() {
-        lock.lock();
-        while (in_use) {
-            co_await queue.done(lock);
-        } 
+    task<void> get();
 
-        in_use = true;
-        //hold = true;
-        lock.unlock();
-        
-        // only who hold buffer can access these fields, so no need to lock
-        if(!valid) {
-            co_await read_from_device();
-        }
+    void put();
 
-        co_return data;
+    public:
+
+    bool match(block_device* bdev, uint64 block_no) {
+        auto guard = make_lock_guard(lock);
+        return this->bdev == bdev && this->block_no == block_no && !dying;
     }
 
-    void __put(){
-        lock.lock();
+    void init(block_device* bdev, uint64 block_no);
 
-        in_use = false;
-        queue.wake_up_one();
+    void mark_dying(){
+        lock.lock();
+        dying = true;
         lock.unlock();
     }
+    
+
+    // flush when you not hold this buffer, and don't allow more reference to this buffer
+    task<void> flush();
 };
 
-struct block_buffer_node_ref {
+struct block_buffer_node_ref : noncopyable{
+    public:
     block_buffer_node *node = nullptr;
     bool hold = false;
     block_buffer_node_ref() = default;
     block_buffer_node_ref(block_buffer_node *node) : node(node) {
         if(node) {
-            node->lock.lock();
-            node->reference_count++;
-            node->lock.unlock();
+            node->inc_ref();
         }
     }
     ~block_buffer_node_ref() {
@@ -101,25 +112,36 @@ struct block_buffer_node_ref {
             if(hold) {
                 put();
             }
-            node->lock.lock();
-            node->reference_count--;
-            node->lock.unlock();
+            node->dec_ref();
         }
     }
+
+
+    block_buffer_node_ref& operator=(block_buffer_node_ref&& other) {
+        std::swap(node, other.node);
+        std::swap(hold, other.hold);
+        return *this;
+    }
+
+    block_buffer_node_ref(block_buffer_node_ref&& other) {
+        std::swap(node, other.node);
+        std::swap(hold, other.hold);
+    }
+
+
     explicit operator bool() const {
         return node != nullptr;
     }
 
 
     task<const uint8*> get_for_read() {
-        std::optional<uint8*> ret = co_await __get();
-        co_return *ret;
+        co_return *co_await get();
     }
 
     task<uint8*> get_for_write() {
-        std::optional<uint8*> ret = co_await __get();
+        uint8* ret = *co_await get();
         node->dirty = true;
-        co_return *ret;
+        co_return ret;
     }
 
     void put() {
@@ -127,68 +149,45 @@ struct block_buffer_node_ref {
             return;
         }
         hold = false;
-        node->__put();
+        __sync_synchronize();
+        node->put();
     }
 
     task<void> flush() {
-        co_await node->write_to_device();
+        if (!hold) {
+            co_await node->get();
+        }
+
+        co_await node->__sync_to_device();
+        
+        if (!hold) {
+            node->put();
+        }
 
         co_return task_ok;
     }
 
     private:
-    task<uint8*> __get(){
-        std::optional<uint8*> ret = co_await node->__get();
-        hold = true;
-        co_return *ret;
-    }
+    task<uint8*> get();
+
+
+
+
+
 
 };
 
 // LRU cache of disk block contents.
+// we can use radix tree to speed up search
 class block_buffer {
+    constexpr static int32 MIN_BUFFER_COUNT = 2048;
 public:
     list<block_buffer_node> buffer_list;
     spinlock lock {"block_buffer.lock"};
 
     block_buffer() {}
-    task<block_buffer_node_ref> get_node(device_id_t device_id, uint64 block_no) {
-        auto bdev = device::get<block_device>(device_id);
-        lock.lock();
-        auto unused = buffer_list.end();
-        for(auto it = buffer_list.begin(); it != buffer_list.end(); ++it) {
-            auto& node = *it;
-            if(node.bdev == bdev && node.block_no == block_no) {
-                // put node at the front of the list
-                buffer_list.move_to_front(it);
-                lock.unlock();
-                co_return block_buffer_node_ref{&node};
-            } else if (!node.in_use) {
-                unused = it;
-            }
-        }
-        
-        if(unused == buffer_list.end()) {
-            block_buffer_node& new_buffer = buffer_list.push_front();
-            new_buffer.bdev = bdev;
-            new_buffer.block_no = block_no;
-            lock.unlock();
-            co_return block_buffer_node_ref{&new_buffer};
-        }
-        lock.unlock();
-
-        auto& node = *unused;
-
-        if(node.valid && node.dirty) {
-            // write back
-            co_await node.write_to_device();
-        }
-
-        node.bdev = bdev;
-        node.block_no = block_no;
-        node.valid = false;
-        co_return block_buffer_node_ref{&node};
-    }
+    task<block_buffer_node_ref> get_node(device_id_t device_id, uint64 block_no);
+    task<void> destroy(device_id_t device_id);
 
 };
 

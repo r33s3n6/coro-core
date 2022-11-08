@@ -4,6 +4,8 @@
 #define KERNBASE 0x80200000L
 #define PHYSTOP (0x80000000 + 128 * 1024 * 1024) // 128M
 
+#define IO_MEM_START (0x80000000 + 127 * 1024 * 1024)
+
 // map the trampoline page to the highest address,
 // in both user and kernel space.
 

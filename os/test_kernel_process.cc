@@ -4,6 +4,9 @@
 
 #include <device/block/buf.h>
 
+#include <fs/nfs/nfs.h>
+#include <fs/nfs/inode.h>
+
 int test=0;
 int test2=0;
 
@@ -98,7 +101,7 @@ task<void> test_disk_write(int block_no, uint8* buf, int len, int id) {
     old_bytes[len+1] = 0;
     debug_core("test_disk_write: block_no: %d, len: %d, old_bytes: %s", block_no, len, old_bytes);
 
-    // buffer.put();
+    // ~buffer() call buffer.put() automatically
 
     // co_await buffer.flush();
 
@@ -128,19 +131,360 @@ task<void> test_buffer_reuse() {
     co_return task_ok;
 }
 
+static uint64 random_seed = 1423;
+uint64 random() {
+    random_seed = random_seed * 1103515245 + 12345;
+    return random_seed;
+}
+
+static uint64 random_store[1024];
+
+task<void> test_coherence(device_id_t test_device) {
+    debug_core("test_coherence");
+
+    block_device* bdev = device::get<block_device>(test_device);
+
+    if (bdev->capacity() < 1024) {
+        debug_core("test_coherence: device %p: not enough space: %d", bdev, bdev->capacity());
+        co_return task_fail;
+    }
+
+    for(int i = 0; i < 1024; i++) {
+        auto buffer_ref = *co_await kernel_block_buffer.get_node(test_device, i);
+        
+        // try to get buffer for write
+        uint8* buf = *co_await buffer_ref.get_for_write();
+        random_store[i] = random();
+        ((uint64*)buf)[0] = random_store[i];
+    }
+
+    // check coherence 1
+
+    for(int i = 0; i < 1024; i++) {
+        auto buffer_ref = *co_await kernel_block_buffer.get_node(test_device, i);
+        
+        // try to get buffer for read
+        const uint8* buf = *co_await buffer_ref.get_for_read();
+        uint64 val = ((uint64*)buf)[0];
+        if(val != random_store[i]) {
+            debug_core("test_coherence: coherence 1 failed: i: %d, val: %p, random_store[i]: %p", i, (void*)val, (void*)random_store[i]);
+            // kernel_assert(false, "");
+            // break;
+        }
+    }
+
+    co_await kernel_block_buffer.destroy(test_device);
+
+    // check coherence 2
+
+    for(int i = 0; i < 1024; i++) {
+        auto buffer_ref = *co_await kernel_block_buffer.get_node(test_device, i);
+        
+        // try to get buffer for read
+        const uint8* buf = *co_await buffer_ref.get_for_read();
+        uint64 val = ((uint64*)buf)[0];
+        if(val != random_store[i]) {
+            debug_core("test_coherence: coherence 2 failed: i: %d, val: %p, random_store[i]: %p", i, (void*)val, (void*)random_store[i]);
+            // break;
+            // kernel_assert(false, "");
+        }
+    }
+
+    debug_core("test_coherence: ok");
+
+    co_return task_ok;
+
+}
+
+
+class test_bdev_coherence  {
+    single_wait_queue _wait_queue;
+    uint32 _subtask_complete;
+    spinlock lock;
+
+    task<void> subtask_write(device_id_t test_device, uint32 block_no, uint64* random_store_ptr) {
+        uint64 random_store = random();
+        auto buffer_ref = *co_await kernel_block_buffer.get_node(test_device, block_no);
+
+        // try to get buffer for write
+        uint8* buf = *co_await buffer_ref.get_for_write();
+        ((uint64*)buf)[0] = random_store;
+
+        *random_store_ptr = random_store;
+
+        lock.lock();
+        _subtask_complete++;
+        if(_subtask_complete == 1024) {
+            _wait_queue.wake_up();
+        }
+        lock.unlock();
+
+        co_return task_ok;
+    }
+
+    task<void> subtask_read(device_id_t test_device, uint32 block_no, uint64 random_store, int index, int pass) {
+
+        auto buffer_ref = *co_await kernel_block_buffer.get_node(test_device, block_no);
+
+        // try to get buffer for read
+        const uint8* buf = *co_await buffer_ref.get_for_read();
+        uint64 val = ((uint64*)buf)[0];
+        if(val != random_store) {
+            debug_core("test_coherence 2: coherence %d failed: index: %d, val: %p, expect: %p", pass, index, (void*)val, (void*)random_store);
+        }
+
+        lock.lock();
+        _subtask_complete++;
+        if(_subtask_complete == 1024) {
+            _wait_queue.wake_up();
+        }
+        lock.unlock();
+
+        co_return task_ok;
+    }
+
+public:
+    task<void> get_test(device_id_t test_device) {
+        debug_core("test_coherence");
+
+        block_device* bdev = device::get<block_device>(test_device);
+
+        if (bdev->capacity() < 1024) {
+            debug_core("test_coherence: device %p: not enough space: %d", bdev, bdev->capacity());
+            co_return task_fail;
+        }
+
+        _subtask_complete = 0;
+
+        for(int i = 0; i < 1024; i++) {
+            kernel_task_queue.push(subtask_write(test_device, i, &random_store[i]));
+        }
+
+        lock.lock();
+        while(_subtask_complete < 1024) {
+            co_await _wait_queue.done(lock);
+        }
+        lock.unlock();
+
+
+        _subtask_complete = 0;
+        // check coherence 1
+
+        for(int i = 0; i < 1024; i++) {
+            kernel_task_queue.push(subtask_read(test_device, i, random_store[i], i, 1));
+        }
+
+        lock.lock();
+        while(_subtask_complete < 1024) {
+            co_await _wait_queue.done(lock);
+        }
+        lock.unlock();
+
+
+        _subtask_complete = 0;
+
+        co_await kernel_block_buffer.destroy(test_device);
+
+        // check coherence 2
+        for(int i = 0; i < 1024; i++) {
+            kernel_task_queue.push(subtask_read(test_device, i, random_store[i], i, 2));
+        }
+
+        lock.lock();
+        while(_subtask_complete < 1024) {
+            co_await _wait_queue.done(lock);
+        }
+        lock.unlock();
+
+
+        debug_core("test_coherence: ok");
+
+        co_return task_ok;
+
+    }
+
+};
+
+
+
+
+
+
 void test_disk_rw(void*){
     debugf("test_disk_rw");
-    for (int i = 0; i < 10;i++) {
-       kernel_task_queue.push(test_disk_write(0, (uint8*)"hello\0", 5, i));
-       kernel_task_queue.push(test_disk_read(0, 10));
+
+    test_bdev_coherence test;
+
+    // auto task = test_coherence2(virtio_disk_id);
+
+    kernel_task_queue.push(test.get_test(virtio_disk_id));
+
+    // for (int i = 0; i < 10;i++) {
+    //    kernel_task_queue.push(test_disk_write(0, (uint8*)"hello\0", 5, i));
+    //    kernel_task_queue.push(test_disk_read(0, 10));
+    // }
+// 
+    // for (int i = 0; i < 10;i++) {
+    //    kernel_task_queue.push(test_disk_write(i+1, (uint8*)"hello\0", 5, i));
+    //    kernel_task_queue.push(test_disk_read(i+1, 10));
+    // }
+    // 
+    // kernel_task_queue.push(test_buffer_reuse());
+
+    
+}
+
+
+task<void> test_nfs_read(device_id_t device_id, uint32 times) {
+    debugf("test_nfs_read");
+    
+    nfs::nfs test_fs;
+    co_await test_fs.mount(device_id);
+    test_fs.print();
+
+    inode* root = *co_await test_fs.get_root();
+    co_await root->get_metadata();
+    ((nfs::nfs_inode*)root)->print();
+
+    nfs::dirent first_file;
+    co_await root->read(&first_file, 0, sizeof(nfs::dirent));
+    debugf("test_make_nfs: first_file: %d: %s",first_file.inode_number, first_file.name);
+    nfs::nfs_inode* file_inode = test_fs.get_inode(first_file.inode_number);
+
+    // test file rw
+    simple_file _file((inode*)file_inode);
+    co_await _file.open();
+    int64 file_size = *co_await _file.llseek(0, file::whence_t::END);
+
+    debugf("test_make_nfs: file_size: %d", file_size);
+
+    
+    co_await _file.llseek(0, file::whence_t::SET);
+
+
+    // check
+    for (uint32 i = 0; i < times; i++) {
+        char buf[48];
+        const char* expect = "hi\0hi\0hi\0hi\0hi\0hi\0hi\0hi\0hi\0hi\0hi\0hi\0hi\0hi\0hi\0hi\0";
+        int64 read_size = *co_await _file.read(buf, 48);
+        if (read_size != 48) {
+            debugf("test_make_nfs: read_size: %d", read_size);
+            kernel_assert(false, "");
+        }
+        for (int j = 0; j < 48; j++) {
+            if (buf[j] != expect[j]) {
+                debugf("test_make_nfs: buf[%d]: %d, expect[%d]: %d", j, buf[j], j, expect[j]);
+                kernel_assert(false, "");
+            }
+        }
+        
     }
 
-    for (int i = 0; i < 10;i++) {
-       kernel_task_queue.push(test_disk_write(i+1, (uint8*)"hello\0", 5, i));
-       kernel_task_queue.push(test_disk_read(i+1, 10));
-    }
-    
-    kernel_task_queue.push(test_buffer_reuse());
+    co_await _file.close();
 
     
+    co_await test_fs.put_inode(file_inode);
+
+    co_await test_fs.unmount();
+
+    co_return task_ok;
+
+}
+
+task<void> test_make_nfs(device_id_t device_id, uint32 times) {
+    debugf("test_make_nfs");
+
+
+    co_await nfs::nfs::make_fs(device_id, 8192);
+    debugf("test_make_nfs: make_fs done");
+
+    nfs::nfs test_fs;
+
+    co_await test_fs.mount(device_id);
+    test_fs.print();
+    inode* root = *co_await test_fs.get_root();
+    auto metadata1 = *co_await root->get_metadata();
+    kernel_assert(metadata1->type == nfs::T_DIR, "metadata.type != T_DIR");
+
+    nfs::dirent first_file;
+    int64 read_size = *co_await root->read(&first_file, 0, sizeof(nfs::dirent));
+    kernel_assert(read_size == sizeof(nfs::dirent), "read_size != sizeof(nfs::dirent)");
+
+    debugf("test_make_nfs: first_file: %d: %s",first_file.inode_number, first_file.name);
+    nfs::nfs_inode* file_inode = test_fs.get_inode(first_file.inode_number);
+
+    auto metadata2 = *co_await file_inode->get_metadata();
+    kernel_assert(metadata2->type == nfs::T_FILE, "metadata.type != T_FILE");
+
+    // test file rw
+    simple_file _file((inode*)file_inode);
+    co_await _file.open();
+    int64 file_size = *co_await _file.llseek(0, file::whence_t::END);
+
+    debugf("test_make_nfs: file_size: %d", file_size);
+    char* buf = new char[file_size + 1];
+    buf[file_size] = 0;
+    co_await _file.llseek(0, file::whence_t::SET);
+    read_size = *co_await _file.read(buf, file_size);
+
+    debugf("test_make_nfs: read_size: %d", read_size);
+    debugf("test_make_nfs: buf: %s", buf);
+
+    // test bulk write
+    co_await _file.llseek(0, file::whence_t::SET);
+    for (uint32 i = 0; i < times; i++) {
+        co_await _file.write("hi\0hi\0hi\0hi\0hi\0hi\0hi\0hi\0hi\0hi\0hi\0hi\0hi\0hi\0hi\0hi\0", 48);
+
+        if (i % 1024 == 0) {
+            debugf("test_make_nfs: write %d", i);
+        }
+    }
+
+    debugf("test_make_nfs: write done");
+
+    int64 new_file_size = *co_await _file.llseek(0, file::whence_t::END);
+    co_await _file.llseek(0, file::whence_t::SET);
+    debugf("test_make_nfs: new_file_size: %d", new_file_size);
+
+    for (uint32 i = 0; i < times; i++) {
+        char buf[48];
+        const char* expect = "hi\0hi\0hi\0hi\0hi\0hi\0hi\0hi\0hi\0hi\0hi\0hi\0hi\0hi\0hi\0hi\0";
+        int64 read_size = *co_await _file.read(buf, 48);
+        if (read_size != 48) {
+            debugf("test_make_nfs: read_size: %d", read_size);
+            kernel_assert(false, "");
+        }
+        for (int j = 0; j < 48; j++) {
+            if (buf[j] != expect[j]) {
+                debugf("test_make_nfs: i:%d buf[%d]: %d, expect[%d]: %d",i,  j, buf[j], j, expect[j]);
+                // kernel_assert(false, "");
+            }
+        }
+        
+    }
+
+    co_await _file.close();
+
+    file_inode->print();
+    ((nfs::nfs_inode*)root)->print();
+
+    co_await test_fs.put_inode(file_inode);
+
+    __sync_synchronize();
+    // print superblock
+    debugf("test_fs.sb.used_generic_blocks: %d", test_fs.sb.used_generic_blocks);
+
+    test_fs.print();
+    co_await test_fs.unmount();
+
+    co_await test_nfs_read(device_id, times);
+
+    co_return task_ok;
+
+}
+
+void test_nfs(void*){
+    
+    // kernel_task_queue.push(test_make_nfs(ramdisk_id, 64 * 1024));
+    kernel_task_queue.push(test_make_nfs(virtio_disk_id, 64 * 1024));
 }

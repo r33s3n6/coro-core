@@ -6,7 +6,8 @@
 #include <utils/log.h>
 #include <map>
 
-allocator kernel_allocator((void*)ekernel, (void*)PHYSTOP);
+allocator kernel_allocator((void*)ekernel, (void*)IO_MEM_START);
+allocator kernel_io_allocator((void*)(IO_MEM_START + 2*PGSIZE), (void*)PHYSTOP); // first 2 pages are reserved for virtio disk
 
 heap_allocator<8> kernel_heap_allocator_8;
 heap_allocator<16> kernel_heap_allocator_16;
@@ -41,6 +42,10 @@ int log2_64 (uint64_t value)
 
 // TODO: failed when no memory
 void* operator new(std::size_t size) {
+    if(size > 4096) {
+        panic("operator new: size > 1024");
+    }
+
     void* ptr = nullptr;
     switch (log2_64(size-1)) {
         case 2:
@@ -68,9 +73,15 @@ void* operator new(std::size_t size) {
             ptr = kernel_heap_allocator_1024.alloc();
             break;
         default:
-            panic("new failed");
+            warnf("new: size %d is too large", size);
+            return kernel_allocator.alloc_page();
+            // panic("new failed");
             break;
     }
+    if (((uint64)ptr & (PGSIZE-1)) == 0) {
+        panic("new: ptr is page-aligned");
+    }
+
     return ptr;
 }
 
@@ -88,6 +99,12 @@ void trace_delete(){
 
 
 void operator delete(void* ptr) {
+    if (((uint64)ptr & (PGSIZE-1)) == 0) {
+        kernel_allocator.free_page(ptr);
+        return;
+    } 
+
+
     uint16 size = *(uint16*)((uint64)ptr & ~(PGSIZE-1));
 
     switch (size/8) {

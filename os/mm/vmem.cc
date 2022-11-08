@@ -39,8 +39,12 @@ pagetable_t kvmmake() {
     debugf("");
 
     // map kernel data and the physical RAM we'll make use of.
-    debugf("kernel data va=%p -> [%p, %p]", e_text, e_text, PHYSTOP);
-    kvmmap(kpgtbl, (uint64)e_text, (uint64)e_text, PHYSTOP - (uint64)e_text, PTE_R | PTE_W);
+    debugf("kernel data va=%p -> [%p, %p]", e_text, e_text, IO_MEM_START);
+    kvmmap(kpgtbl, (uint64)e_text, (uint64)e_text, IO_MEM_START - (uint64)e_text, PTE_R | PTE_W);
+    debugf("");
+
+    debugf("io memory va=%p -> [%p, %p]", IO_MEM_START, IO_MEM_START, PHYSTOP);
+    kvmmap(kpgtbl, IO_MEM_START, IO_MEM_START, PHYSTOP - IO_MEM_START, PTE_R | PTE_W | PTE_MT_IO);
     debugf("");
 
     // map trampoline
@@ -153,7 +157,7 @@ uint64 virt_addr_to_physical(pagetable_t pagetable, uint64 va) {
 // physical addresses starting at pa. va and size might not
 // be page-aligned. Returns 0 on success, -1 if walk() couldn't
 // allocate a needed page-table page.
-int mappages(pagetable_t pagetable, uint64 va, uint64 pa, uint64 size, int perm) {
+int mappages(pagetable_t pagetable, uint64 va, uint64 pa, uint64 size, uint64 perm) {
     uint64 a, last;
     pte_t *pte;
 
@@ -185,12 +189,12 @@ int mappages(pagetable_t pagetable, uint64 va, uint64 pa, uint64 size, int perm)
 // add a mapping to the kernel page table.
 // only used when booting.
 // does not flush TLB or enable paging.
-void kvmmap(pagetable_t kpgtbl, uint64 va, uint64 pa, uint64 sz, int perm) {
+void kvmmap(pagetable_t kpgtbl, uint64 va, uint64 pa, uint64 sz, uint64 perm) {
     if (mappages(kpgtbl, va, pa, sz, perm) != 0)
         panic("kvmmap");
 }
 
-int uvmmap(pagetable_t pagetable, uint64 va, uint64 pa, uint64 size, int perm) {
+int uvmmap(pagetable_t pagetable, uint64 va, uint64 pa, uint64 size, uint64 perm) {
     return mappages(pagetable, va, pa, size, perm);
 }
 

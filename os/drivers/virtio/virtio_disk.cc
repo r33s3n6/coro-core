@@ -10,6 +10,14 @@ inline volatile T& io(T& v) {
     return (*(volatile T*)(&v));
 }
 
+virtio_disk::virtio_disk(uint8* disk_pages) : block_device("virtio_disk"), disk_pages(disk_pages) {
+    //rw_buffer = (rw_buffer_t*)kernel_io_allocator.alloc_page();
+    //debugf("disk_pages: %p, rw_buffer: %p",disk_pages, (void*)rw_buffer);
+}
+virtio_disk::~virtio_disk() {
+    //kernel_io_allocator.free_page((void*)rw_buffer);
+}
+
 int virtio_disk::open(void* base_address) {
     kernel_assert(base_address != nullptr,
                   "virtio_disk::open: base_address is null");
@@ -132,7 +140,7 @@ task<int> virtio_disk::flush() {
 }
 
 uint64 virtio_disk::capacity() const {
-    return regs->config.capacity;
+    return regs->config.capacity * 512 / block_device::BLOCK_SIZE;
 }
 
 // find a free descriptor, mark it non-free, return its index.
@@ -190,15 +198,23 @@ int virtio_disk::alloc_descs(int* idx) {
 
 
 // this is not optimal for read operation only need 2 descriptors
-task<int> virtio_disk::disk_command(uint64 command,uint64 block_no, uint64 count, void *buf) {
-    // debug_core("disk_command %d %d %p %d", command, block_no, count, buf);
+task<int> virtio_disk::disk_command(uint64 command, uint64 block_no, uint64 count, void *buf) {
+    #ifdef VIRTIO_DISK_DEBUG
 
+    if (command == VIRTIO_BLK_T_OUT) {
+        debug_core("disk_command: write [%l:+%l) from %p, buf[0]=%p", block_no, count, buf, (void*)*(uint64*)buf);
+    }
+
+    #endif
+
+    kernel_assert( count == 1, "virtio_disk::disk_command: count must be 1");
     uint64 sector = block_no * (block_device::BLOCK_SIZE / 512);
-    uint64 nsector = count * (block_device::BLOCK_SIZE / 512);
+    // uint64 nsector = count * (block_device::BLOCK_SIZE / 512);
 
-    if (sector + nsector > capacity()) {
-        warnf("virtio_disk_rw: sector %d + nsector %d > capacity %d", sector, nsector, capacity());
-        co_return -1;
+    if (block_no + count > capacity()) {
+        warnf("virtio_disk_rw: block_no %l + count %l > capacity %l", block_no, count, capacity());
+        // panic("virtio_disk_rw");
+        co_return task_fail;
     }
 
     lock.lock();
@@ -217,9 +233,10 @@ task<int> virtio_disk::disk_command(uint64 command,uint64 block_no, uint64 count
         co_await request_queue.done(lock);
     }
 
+
     // format the three descriptors.
     // qemu's virtio-blk.c reads them.
-    struct virtio_blk_req* buf0 = &ops[idx[0]];
+    virtio_blk_req* buf0 = &ops[idx[0]];
 
 
     buf0->type = command;  // write the disk
@@ -234,31 +251,37 @@ task<int> virtio_disk::disk_command(uint64 command,uint64 block_no, uint64 count
 
     desc[idx[1]].addr = (uint64)buf;
     desc[idx[1]].len = count * block_device::BLOCK_SIZE;
+    uint16 flags;
     if (command == VIRTIO_BLK_T_OUT || command == VIRTIO_BLK_T_FLUSH) {
-        desc[idx[1]].flags = 0;  // device reads b->data
+        flags = 0;  // device reads b->data
     }
     else {
-        desc[idx[1]].flags = VRING_DESC_F_WRITE;  // device writes b->data
+        flags = VRING_DESC_F_WRITE;  // device writes b->data
     }
-    desc[idx[1]].flags |= VRING_DESC_F_NEXT;
+    flags |= VRING_DESC_F_NEXT;
+    desc[idx[1]].flags = flags;
     desc[idx[1]].next = idx[2];
 
     info[idx[0]].status = 0xfb;  // device writes 0 on success
+    info[idx[0]].done = false;
     desc[idx[2]].addr = (uint64)&info[idx[0]].status;
     desc[idx[2]].len = 1;
     desc[idx[2]].flags = VRING_DESC_F_WRITE;  // device writes the status
     desc[idx[2]].next = 0;
 
-    // debug_core("virtio_disk_rw: idx %d %d %d", idx[0], idx[1], idx[2]);
-    // debug_core("virtio_disk_rw: avail->idx: %d", avail->idx);
+    __sync_synchronize();
 
     // tell the device the first index in our chain of descriptors.
     avail->ring[avail->idx % NUM] = idx[0];
 
     // tell the device another avail ring entry is available.
-    avail->idx += 1;  // not % NUM ...
+    avail->idx = avail->idx + 1;  // not % NUM ...
 
     __sync_synchronize();
+
+    while ( avail->idx - used->idx > NUM) {
+        __sync_synchronize();
+    }
 
     regs->queue_notify = 0;  // value is queue number
 
@@ -271,21 +294,21 @@ task<int> virtio_disk::disk_command(uint64 command,uint64 block_no, uint64 count
             co_return -1;
         }
         co_await info[idx[0]].wait_queue.done(lock);
+
     }
 
-    // infof("wait for intr over = %d\n", intr_get());
 
     free_chain(idx[0]);
+
     lock.unlock();
 
+    #ifdef VIRTIO_DISK_DEBUG
+    if (command == VIRTIO_BLK_T_IN) {
+        debug_core("disk_command: read [%l:+%l) to %p, buf[0]=%p", block_no, count, buf, (void*)*(uint64*)buf);
+    }
+    #endif
+    
     co_return 0;
-}
-
-task<void> virtio_disk::disk_rw_done(int id) {
-    auto guard = make_lock_guard(lock);
-    info[id].done = true;
-    info[id].wait_queue.wake_up();
-    co_return task_ok;
 }
 
 void virtio_disk::virtio_disk_intr() {
@@ -311,15 +334,19 @@ void virtio_disk::virtio_disk_intr() {
         __sync_synchronize();
         int id = used->ring[used_idx % NUM].id;
 
-        if (info[id].status != 0)
-            panic("virtio_disk_intr status");
-
-        kernel_task_queue.push(disk_rw_done(id));
+        while (info[id].status != 0) ;
 
         used_idx += 1;
+
+        info[id].done = true;
+        info[id].wait_queue.wake_up();
+
+        // debug_core("virtio_disk_intr: id %d, used_idx: %d", id, used_idx);
     }
 
-
+    __sync_synchronize();
 
     lock.unlock();
+
+    
 }

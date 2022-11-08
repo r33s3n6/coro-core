@@ -21,10 +21,11 @@
 #include <coroutine.h>
 
 #include <drivers/virtio/virtio_disk.h>
+#include <drivers/ramdisk/ramdisk.h>
 
-uint8 __attribute__((aligned(PGSIZE))) virtio_disk_pages[2 * PGSIZE];
-virtio_disk vd0(virtio_disk_pages);
-
+// uint8 __attribute__((aligned(PGSIZE))) virtio_disk_pages[2 * PGSIZE];
+virtio_disk vd0((uint8*)IO_MEM_START);
+ramdisk ram0(8 * 1024); // 4 MB
 
 uint32 magic = 0xdeadbeef;
 
@@ -51,6 +52,9 @@ void init_globals(){
     if(ret){
         panic("virtio disk open failed");
     }
+
+    ram0.open((void*)PHYSTOP);
+
     /*
             procinit();
         binit();        // buffer cache
@@ -72,6 +76,7 @@ extern int kernel_coroutine_test();
 extern void print_something();
 extern void test_bind_core(void* arg);
 extern void test_disk_rw(void* arg);
+extern void test_nfs(void* arg);
 
 
 // test code
@@ -102,25 +107,32 @@ void init(){
     // test_proc->set_name("test_coroutine");
     // kernel_process_queue.push(test_proc);
 
-    shared_ptr<process> test_proc = make_shared<kernel_process>(kernel_process_queue.alloc_pid(), (kernel_process::func_type)test_disk_rw);
-    test_proc->set_name("test_disk_rw");
-    kernel_process_queue.push(test_proc);
+    shared_ptr<process> test_disk_rw_proc = make_shared<kernel_process>(kernel_process_queue.alloc_pid(), (kernel_process::func_type)test_disk_rw);
+    test_disk_rw_proc->set_name("test_disk_rw");
+
+    shared_ptr<process> test_nfs_proc = make_shared<kernel_process>(kernel_process_queue.alloc_pid(), test_nfs);
+    test_nfs_proc->set_name("test_nfs");
+
+    // kernel_process_queue.push(test_disk_rw_proc);
+
+    kernel_process_queue.push(test_nfs_proc);
+
     
 
-    for(int i=0;i<10;i++){
-
-        int bind_core;
-        if (i<4){
-            bind_core = i;
-        } else {
-            bind_core = 0;
-        }
-        shared_ptr<process> proc = make_shared<kernel_process>(kernel_process_queue.alloc_pid(), test_bind_core, &bind_core, sizeof(bind_core));
-        proc->set_name(("N" + std::to_string(i) + " C" + std::to_string(bind_core)).c_str());
-        proc->binding_core = bind_core;
-        // debug_core("init: push process %s", proc->get_name());
-        kernel_process_queue.push(proc);
-    }
+    // for(int i=0;i<10;i++){
+// 
+    //     int bind_core;
+    //     if (i<4){
+    //         bind_core = i;
+    //     } else {
+    //         bind_core = 0;
+    //     }
+    //     shared_ptr<process> proc = make_shared<kernel_process>(kernel_process_queue.alloc_pid(), test_bind_core, &bind_core, sizeof(bind_core));
+    //     proc->set_name(("N" + std::to_string(i) + " C" + std::to_string(bind_core)).c_str());
+    //     proc->binding_core = bind_core;
+    //     // debug_core("init: push process %s", proc->get_name());
+    //     kernel_process_queue.push(proc);
+    // }
 
 
 

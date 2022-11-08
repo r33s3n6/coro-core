@@ -47,7 +47,7 @@ void kernel_interrupt_handler(uint64 scause, uint64 stval, uint64 sepc) {
     case SupervisorExternal:
         irq = c->plic_claim();
         if (irq == VIRTIO0_IRQ) {
-            debug_core("virtio0 interrupt");
+            // debug_core("virtio0 interrupt");
             auto dev = device::get<virtio_disk>(virtio_disk_id);
             dev->virtio_disk_intr();
             //--  virtio_disk_intr();

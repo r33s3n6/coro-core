@@ -81,7 +81,7 @@ class file_logger : public logger {
                       const char* fmt,
                       Args... args) {
         if constexpr (with_lock) {
-            log_file->file_rw_lock.lock();
+            co_await log_file->file_rw_lock.lock();
         } else {
             log_file->file_rw_lock.lock_off();
         }

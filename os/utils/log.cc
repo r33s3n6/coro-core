@@ -46,7 +46,7 @@ task<void> file_logger::print_trace() {
     uint64 cpu_id = cpu::current_id();
     int last = trace_last[cpu_id];
 
-    log_file->file_rw_lock.lock();
+    co_await log_file->file_rw_lock.lock();
 
     co_await __fprintf(log_file, "traceback: ");
     for (int i = 0; i < MAX_TRACE_CNT; i++) {

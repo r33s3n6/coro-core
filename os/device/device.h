@@ -3,8 +3,8 @@
 #include <ccore/types.h>
 #include <utils/list.h>
 
-#define VIRTIO_DISK_MAJOR 2
-#define VIRTIO_DISK_MINOR 0
+#include <utils/printf.h>
+
 
 struct device_id_t {
     uint32 major;
@@ -14,7 +14,18 @@ struct device_id_t {
     }
 };
 
+#define RAMDISK_MAJOR 1
+#define RAMDISK_MINOR 0
+
+constexpr device_id_t ramdisk_id{RAMDISK_MAJOR, RAMDISK_MINOR};
+
+
+#define VIRTIO_DISK_MAJOR 2
+#define VIRTIO_DISK_MINOR 0
+
 constexpr device_id_t virtio_disk_id{VIRTIO_DISK_MAJOR, VIRTIO_DISK_MINOR};
+
+
 
 
 class device {
@@ -33,9 +44,11 @@ public:
                 return;
             }
         }
+        device_id = {0, 0};
     }
 
     static list<device*> devices;
+
     template< typename device_t >
     static device_t* get(device_id_t device_id) {
         for (auto device : devices) {
@@ -43,6 +56,7 @@ public:
                 return static_cast<device_t*>(device);
             }
         }
+        printf("WARN: device not found: %d:%d", device_id.major, device_id.minor);
         return nullptr;
     }
 };

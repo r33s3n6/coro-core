@@ -18,11 +18,15 @@
 #include <ccore/types.h>
 #include <utils/log.h>
 
+#include <mm/allocator.h>
+
+// TODO: dma and coherent memory
 
 class virtio_disk : public block_device {
+    typedef uint8 rw_buffer_t[1024];
 public:
-    virtio_disk(uint8* disk_pages) : block_device("virtio_disk"), disk_pages(disk_pages) {}
-    ~virtio_disk() = default;
+    virtio_disk(uint8* disk_pages);
+    ~virtio_disk();
 
     uint64 capacity() const override;
     int open(void* base_address) override;
@@ -64,20 +68,20 @@ private:
     // most commands consist of a "chain" (a linked list) of a couple of
     // these descriptors.
     // points into pages[].
-    struct virtq_desc *desc;
+    virtq_desc *desc;
 
     // next is a ring in which the driver writes descriptor numbers
     // that the driver would like the device to process.  it only
     // includes the head descriptor of each chain. the ring has
     // NUM elements.
     // points into pages[].
-    struct virtq_avail *avail;
+    virtq_avail *avail;
 
     // finally a ring in which the device writes descriptor numbers that
     // the device has finished processing (just the head of each chain).
     // there are NUM used ring entries.
     // points into pages[].
-    struct virtq_used *used;
+    volatile virtq_used *used;
 
 private:
     volatile virtio_regs_t* regs = nullptr;
@@ -94,7 +98,7 @@ private:
     struct {
         single_wait_queue wait_queue;
         bool done;
-        char status;
+        volatile char status;
     } info[NUM];
 
     wait_queue request_queue;

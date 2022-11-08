@@ -344,6 +344,14 @@ static inline void sfence_vma() {
 #define PTE_W (1L << 2)
 #define PTE_X (1L << 3)
 #define PTE_U (1L << 4)// 1 -> user can access
+
+#define PTE_MT_OFFSET 61
+#define PTE_MT_MASK (3uL << PTE_MT_OFFSET)
+#define PTE_MT_PMA (0uL << PTE_MT_OFFSET) // memory type: normal
+#define PTE_MT_NC (1uL << PTE_MT_OFFSET) // memory type: RVWMO
+#define PTE_MT_IO (2uL << PTE_MT_OFFSET) // memory type: I/O
+#define PTE_MT_FLAG(x, mt) (((x) & ~PTE_MT_MASK) | (mt))
+
 #define HAS_BIT(val, bit) (((val) & (bit)) != 0)
 
 // shift a physical address to the right place for a PTE.
