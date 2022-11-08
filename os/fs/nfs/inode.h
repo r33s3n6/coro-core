@@ -44,6 +44,18 @@ class nfs_inode : public inode {
     // uint32 inode_block_index = -1; // inode block index cache
     // uint32 inode_offset = -1; // inode offset cache
 
+    public:
+    static uint32 cache_hit;
+    static uint32 cache_miss;
+    
+    private:
+    uint32 cache_raw_indirect_offset = -1;
+    uint32 cache_offset = -1;
+    uint32 cache_addr_block = -1;
+
+
+
+
     task<void> get_block_index(uint32 start_addr_block, uint64 offset,
          uint32* addr_block_index, uint32* addr_block_offset, uint32* block_index, uint32* block_offset);
 

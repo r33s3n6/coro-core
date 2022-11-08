@@ -108,7 +108,7 @@ struct task_base : noncopyable, sleepable {
 
     promise_type* get_promise() noexcept { return _promise; }
 
-    void resume() { get_handle().resume(); }
+    void resume();
 
     task_base get_ref() {
         return {_promise, false};
@@ -131,9 +131,14 @@ struct task_base : noncopyable, sleepable {
     
 };
 
+template <typename return_type = void>
+struct task;
+
 struct promise_base {
 
-    enum status : uint8_t { suspend, done, fail };
+    ~promise_base();
+
+    enum status : uint8_t { init, running, suspend, done, fail };
     // our caller, we resume it when we are done
     task_base caller {};
 
@@ -152,17 +157,19 @@ struct promise_base {
 
     status get_status() const { return _status; }
     void set_fail() { _status = fail; }
+    void set_running() { _status = running; }
 
 #ifdef HANDLE_MEMORY_ALLOC_FAIL
     static task_fail_t get_return_object_on_allocation_failure();
 #endif
 
    protected:
-    status _status = suspend;
+   friend class task_base;
+
+    status _status = init;
 };
 
-template <typename return_type = void>
-struct task;
+
 
 
 template <typename return_type = void>
@@ -366,6 +373,8 @@ struct task : task_base {
             // we don't have the ownership of the caller
             p->caller = std::move(caller);
 
+            p->set_running();
+
             // resume ourselves, by tail call optimization, we will not create a new
             // stack frame
             return task::get_handle(p);
@@ -385,7 +394,7 @@ struct task : task_base {
             return std::move(p->result);
         }
         
-            task_awaiter(promise_base* p, bool alloc_fail) noexcept
+        task_awaiter(promise_base* p, bool alloc_fail) noexcept
             : p((promise_type*)p),alloc_fail(alloc_fail)
         {}
         promise_type* p;

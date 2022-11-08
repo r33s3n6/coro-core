@@ -11,6 +11,9 @@
 // TODO: rw_lock
 namespace nfs {
 
+uint32 nfs_inode::cache_hit = 0;
+uint32 nfs_inode::cache_miss = 0;
+
 void nfs_inode::print(){
     infof("nfs_inode::print\ninode_number: %d\nperm: %d\nsize: %d\ntype: %d\naddrs[0]: %d\nnext_addr_block: %d", inode_number, metadata.perm, metadata.size, metadata.type, addrs[0], next_addr_block);
 }
@@ -184,20 +187,33 @@ task<int64> nfs_inode::data_rw(std::conditional_t<_write, const uint8 *, uint8*>
     }
     // now next_addr_block is valid
     uint32 current_addr_block = next_addr_block;
+
+    
     offset -= DIRECT_DATA_SIZE;
-    // block_rw_size = -DIRECT_DATA_SIZE;
+
+
+    uint64 complete_indirect_offset = offset + size;
+
+    if (cache_raw_indirect_offset == offset) {
+        nfs_inode::cache_hit++;
+        current_addr_block = cache_addr_block;
+        offset = cache_offset;
+    } else {
+        nfs_inode::cache_miss++;
+    }
 
     // now offset is relative to the start of current_addr_block
 
-    
-
     while (size > 0) {
+
 
         co_await get_block_index(
             current_addr_block, offset, 
             &addr_block_index, &addr_block_offset, 
             nullptr, &data_block_offset);
+        
 
+        
 
         current_addr_block = addr_block_index;
 
@@ -218,6 +234,10 @@ task<int64> nfs_inode::data_rw(std::conditional_t<_write, const uint8 *, uint8*>
 
 
     }
+
+    cache_raw_indirect_offset = complete_indirect_offset;
+    cache_offset = offset;
+    cache_addr_block = current_addr_block;
 
     co_return rw_size;
 }

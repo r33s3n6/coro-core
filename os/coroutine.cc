@@ -5,6 +5,13 @@
 task_queue kernel_task_queue;
 task_scheduler kernel_task_scheduler[NCPU];
 
+promise_base::~promise_base() {
+    if (_status == init) {
+        warnf("promise_base::~promise_base: promise never ran");
+        panic("for debug");
+    }
+}
+
 task_base::task_base(task_base&& t)
     : _promise(t._promise), alloc_fail(t.alloc_fail), _owner(t._owner) {
 
@@ -26,7 +33,10 @@ task_base& task_base::operator=(task_base&& t) {
 task_base::task_base(promise_type* p, bool owner)
     : _promise(p), alloc_fail(false), _owner(owner) {}
 
-
+void task_base::resume() { 
+    _promise->_status = promise_base::running;
+    get_handle().resume();
+}
 
 // task executor destruct ifself after execution
 task<void> __task_executor(promise<void>* p) {

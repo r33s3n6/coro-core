@@ -394,6 +394,7 @@ task<void> test_nfs_read(device_id_t device_id, uint32 times) {
 task<void> test_make_nfs(device_id_t device_id, uint32 times) {
     debugf("test_make_nfs");
 
+    
 
     co_await nfs::nfs::make_fs(device_id, 8192);
     debugf("test_make_nfs: make_fs done");
@@ -479,6 +480,94 @@ task<void> test_make_nfs(device_id_t device_id, uint32 times) {
 
     co_await test_nfs_read(device_id, times);
 
+    infof("inode inner cache: %d/%d", nfs::nfs_inode::cache_hit, nfs::nfs_inode::cache_miss);
+
+    co_return task_ok;
+
+}
+
+task<void> test_make_nfs2(device_id_t device_id) {
+    debugf("test_make_nfs");
+
+
+    co_await nfs::nfs::make_fs(device_id, 8192);
+    debugf("test_make_nfs: make_fs done");
+
+    nfs::nfs test_fs;
+
+    co_await test_fs.mount(device_id);
+    test_fs.print();
+    inode* root = *co_await test_fs.get_root();
+    auto metadata1 = *co_await root->get_metadata();
+    kernel_assert(metadata1->type == nfs::T_DIR, "metadata.type != T_DIR");
+
+    nfs::dirent first_file;
+    int64 read_size = *co_await root->read(&first_file, 0, sizeof(nfs::dirent));
+    kernel_assert(read_size == sizeof(nfs::dirent), "read_size != sizeof(nfs::dirent)");
+
+    debugf("test_make_nfs: first_file: %d: %s",first_file.inode_number, first_file.name);
+    nfs::nfs_inode* file_inode = test_fs.get_inode(first_file.inode_number);
+
+    auto metadata2 = *co_await file_inode->get_metadata();
+    kernel_assert(metadata2->type == nfs::T_FILE, "metadata.type != T_FILE");
+
+    // test file rw
+    simple_file _file((inode*)file_inode);
+    co_await _file.open();
+    int64 file_size = *co_await _file.llseek(0, file::whence_t::END);
+
+    debugf("test_make_nfs: file_size: %d", file_size);
+    char* buf = new char[file_size + 1];
+    buf[file_size] = 0;
+    co_await _file.llseek(0, file::whence_t::SET);
+    read_size = *co_await _file.read(buf, file_size);
+
+    debugf("test_make_nfs: read_size: %d", read_size);
+    debugf("test_make_nfs: buf: %s", buf);
+    delete buf;
+
+    // test bulk write
+    co_await _file.llseek(0, file::whence_t::SET);
+    co_await _file.write(skernel, ekernel-skernel);
+
+
+    debugf("test_make_nfs: write done");
+
+    int64 new_file_size = *co_await _file.llseek(0, file::whence_t::END);
+    co_await _file.llseek(0, file::whence_t::SET);
+    debugf("test_make_nfs: new_file_size: %d", new_file_size);
+
+    buf = new char[new_file_size + 1];
+    buf[new_file_size] = 0;
+
+    read_size = *co_await _file.read(buf, new_file_size);
+    debugf("test_make_nfs: read_size: %d", read_size);
+
+
+    for (uint32 i = 0; i < ekernel-skernel; i++) {
+        if (buf[i] != skernel[i]) {
+            debugf("test_make_nfs: i:%d buf[%d]: %d, skernel[%d]: %d",i,  i, buf[i], i, skernel[i]);
+            // kernel_assert(false, "");
+        }
+        
+    }
+
+    co_await _file.close();
+
+    file_inode->print();
+    ((nfs::nfs_inode*)root)->print();
+
+    co_await test_fs.put_inode(file_inode);
+
+    __sync_synchronize();
+    // print superblock
+    debugf("test_fs.sb.used_generic_blocks: %d", test_fs.sb.used_generic_blocks);
+
+    test_fs.print();
+    co_await test_fs.unmount();
+
+    infof("inode inner cache: %d/%d", nfs::nfs_inode::cache_hit, nfs::nfs_inode::cache_miss);
+
     co_return task_ok;
 
 }
@@ -487,4 +576,6 @@ void test_nfs(void*){
     
     // kernel_task_queue.push(test_make_nfs(ramdisk_id, 64 * 1024));
     kernel_task_queue.push(test_make_nfs(virtio_disk_id, 64 * 1024));
+
+    // kernel_task_queue.push(test_make_nfs2(virtio_disk_id));
 }
