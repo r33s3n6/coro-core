@@ -269,19 +269,12 @@ task<int> virtio_disk::disk_command(uint64 command, uint64 block_no, uint64 coun
     desc[idx[2]].flags = VRING_DESC_F_WRITE;  // device writes the status
     desc[idx[2]].next = 0;
 
-    __sync_synchronize();
 
     // tell the device the first index in our chain of descriptors.
     avail->ring[avail->idx % NUM] = idx[0];
 
     // tell the device another avail ring entry is available.
     avail->idx = avail->idx + 1;  // not % NUM ...
-
-    __sync_synchronize();
-
-    while ( avail->idx - used->idx > NUM) {
-        __sync_synchronize();
-    }
 
     regs->queue_notify = 0;  // value is queue number
 
@@ -325,13 +318,12 @@ void virtio_disk::virtio_disk_intr() {
     // in the next interrupt, which is harmless.
     regs->interrupt_ack = regs->interrupt_status & 0x3;
 
-    __sync_synchronize();
 
     // the device increments disk.used->idx when it
     // adds an entry to the used ring.
 
     while (used_idx != used->idx) {
-        __sync_synchronize();
+
         int id = used->ring[used_idx % NUM].id;
 
         while (info[id].status != 0) ;
@@ -344,7 +336,6 @@ void virtio_disk::virtio_disk_intr() {
         // debug_core("virtio_disk_intr: id %d, used_idx: %d", id, used_idx);
     }
 
-    __sync_synchronize();
 
     lock.unlock();
 

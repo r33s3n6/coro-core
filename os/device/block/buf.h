@@ -149,7 +149,6 @@ struct block_buffer_node_ref : noncopyable{
             return;
         }
         hold = false;
-        __sync_synchronize();
         node->put();
     }
 

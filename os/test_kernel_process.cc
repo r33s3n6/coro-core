@@ -471,9 +471,7 @@ task<void> test_make_nfs(device_id_t device_id, uint32 times) {
 
     co_await test_fs.put_inode(file_inode);
 
-    __sync_synchronize();
     // print superblock
-    debugf("test_fs.sb.used_generic_blocks: %d", test_fs.sb.used_generic_blocks);
 
     test_fs.print();
     co_await test_fs.unmount();
@@ -552,6 +550,8 @@ task<void> test_make_nfs2(device_id_t device_id) {
         
     }
 
+    delete[] buf;
+
     co_await _file.close();
 
     file_inode->print();
@@ -559,7 +559,6 @@ task<void> test_make_nfs2(device_id_t device_id) {
 
     co_await test_fs.put_inode(file_inode);
 
-    __sync_synchronize();
     // print superblock
     debugf("test_fs.sb.used_generic_blocks: %d", test_fs.sb.used_generic_blocks);
 

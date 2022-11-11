@@ -55,20 +55,6 @@ void init_globals(){
 
     ram0.open((void*)PHYSTOP);
 
-    /*
-            procinit();
-        binit();        // buffer cache
-        inode_table_init();        // inode cache
-        fileinit();     // file table
-        init_trace();
-
-        init_abstract_disk();
-
-
-        init_app_names();
-        init_scheduler();
-        make_shell_proc();
-        */
 
 }
 
@@ -88,12 +74,12 @@ void test_coroutine(){
 
 }
 
+
+
 void idle(){
     kernel_assert(cpu::local_irq_on() && (r_sie() & SIE_STIE), "timer interrupt should be enabled");
     warnf("%d: idle: start", cpu::my_cpu()->get_core_id());
     while (true){
-
-        // kernel_assert(cpu::local_irq_on() && (r_sie() & SIE_STIE), "timer interrupt should be enabled");
         asm volatile("wfi");
     }
     kernel_assert(false, "idle should not return");
@@ -154,7 +140,7 @@ void task_scheduler_run(void* arg) {
 
 // do not use any global class object here
 // for it is not initialized yet
-extern "C" void kernel_init(uint64 hartid)
+extern "C" void kernel_init(uint64 hartid, uint64 device_tree)
 {
     //if (magic != 0xdeadbeef){
 		//panic("not handled exception, restarted by bootloader\n");
@@ -179,6 +165,8 @@ extern "C" void kernel_init(uint64 hartid)
         // global constructors
         __init_cxx();
 
+        // all global variables are initialized (including kernel_allocator)
+
         infof("=======");
         infof("[ccore] Boot hartid=%d", hartid);
         infof("[ccore] Core count: %d", NCPU);
@@ -188,15 +176,21 @@ extern "C" void kernel_init(uint64 hartid)
         infof("[ccore] s_bss_stack=%p, e_bss_stack=%p", boot_stack_top, boot_stack_bottom);
         infof("[ccore] s_bss=%p, e_bss=%p", s_bss, e_bss);
 
-        // set cpu id
+        // init cpu (id and temp_stack)
         init_cpus();
+
+        // make page table
         kvminit();
+
+        // enable interrupts
         cpu::plic_init();
+
 
         init_globals();
 
         // kernel_allocator.set_debug(true);
 
+        // start all cores
         for (uint64 i = 0; i < NCPU; i++) {
             if (i != hartid) // not this hart
             {
@@ -204,7 +198,6 @@ extern "C" void kernel_init(uint64 hartid)
                 start_hart(i, (uint64)_entry, 0);
             }
         }
-
     }
     
     cpu* my_cpu = cpu::__my_cpu();

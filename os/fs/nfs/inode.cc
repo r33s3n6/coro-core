@@ -421,12 +421,12 @@ task<void> nfs_inode::get_block_index(uint32 start_addr_block, uint64 offset,
         
 
         uint32 new_addr_block_index = *co_await _fs->alloc_block();
-        debugf("nfs_inode::get_block_index: alloc new addr block %d", new_addr_block_index);
+        // debugf("nfs_inode::get_block_index: alloc new addr block %d", new_addr_block_index);
         auto new_buf_ref = *co_await kernel_block_buffer.get_node(device_id, new_addr_block_index);
         auto new_buf = *co_await new_buf_ref.get_for_write();
         memset(new_buf, 0xff, BLOCK_SIZE);
-        const addr_block* debug_block = (const addr_block*)new_buf;
-        debugf("nfs_inode::get_block_index: first 8 bytes: %p, next_addr_block %d", (void*)*(uint64*)debug_block, debug_block->next_addr_block);
+        // const addr_block* debug_block = (const addr_block*)new_buf;
+        // debugf("nfs_inode::get_block_index: first 8 bytes: %p, next_addr_block %d", (void*)*(uint64*)debug_block, debug_block->next_addr_block);
         // kernel_assert(*(uint64*)new_buf == (uint64)-1, "nfs_inode::get_block_index: new_buf is nullptr");
 
         // update previous addr block
@@ -438,7 +438,7 @@ task<void> nfs_inode::get_block_index(uint32 start_addr_block, uint64 offset,
 
         offset -= ADDR_BLOCK_DATA_SIZE;
 
-        debugf("nfs_inode::get_block_index: create intermediate addr block: %d", _addr_block_index);
+        // debugf("nfs_inode::get_block_index: create intermediate addr block: %d", _addr_block_index);
 
     }
 

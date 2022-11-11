@@ -88,9 +88,6 @@ void block_buffer_node::init(block_device* bdev, uint64 block_no) {
     in_use = false;
     reference_count = 0;
 
-    
-
-    // __sync_synchronize();
 }
 
 task<block_buffer_node_ref> block_buffer::get_node(device_id_t device_id, uint64 block_no) {

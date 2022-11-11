@@ -6,15 +6,13 @@
 
 #include <coroutine.h>
 
-
-
-class wait_queue {
+class wait_queue_base {
     public:
     struct wait_queue_done {
-        wait_queue* wq;
+        wait_queue_base* wq;
         task_base caller;
         spinlock& lock;
-        wait_queue_done(wait_queue* wq, spinlock& lock) : wq(wq), lock(lock) {}
+        wait_queue_done(wait_queue_base* wq, spinlock& lock) : wq(wq), lock(lock) {}
         bool await_ready() const { 
             return false; 
         }
@@ -32,7 +30,7 @@ class wait_queue {
 
             lock.unlock();
             
-            __sync_synchronize();
+            //__sync_synchronize();
 
             // switch back to scheduler
             return std::noop_coroutine();
@@ -40,7 +38,7 @@ class wait_queue {
         void await_resume() {
             
             if (!caller.get_promise()->no_yield) {
-                __sync_synchronize();
+               // __sync_synchronize();
             }
 
             lock.lock();
@@ -48,6 +46,16 @@ class wait_queue {
 
         }
     };
+
+    virtual void sleep(sleepable* s) = 0;
+    wait_queue_done done(spinlock& lock) {
+        return {this, lock};
+    }
+
+};
+
+class wait_queue : public wait_queue_base {
+
     private:
     list<sleepable*> sleepers;
 
@@ -71,51 +79,12 @@ class wait_queue {
         }
     }
 
-    wait_queue_done done(spinlock& lock) {
-        return {this, lock};
-    }
 };
 
 
-class single_wait_queue {
+class single_wait_queue : public wait_queue_base {
     public:
-    struct wait_queue_done {
-        single_wait_queue* wq;
-        task_base caller;
-        spinlock& lock;
-        wait_queue_done(single_wait_queue* wq, spinlock& lock) : wq(wq), lock(lock) {}
-        bool await_ready() const { 
-            return false; 
-        }
-        std::coroutine_handle<> await_suspend(task_base h) {
-            
-            caller = std::move(h);
-
-            promise_base* p = caller.get_promise();
-
-            if(p->no_yield) {
-                lock.unlock();
-                return caller.get_handle(); // resume immediately
-            }
-
-            wq->sleep(&caller);
-
-            lock.unlock();
-            
-            __sync_synchronize();
-
-            // switch back to scheduler
-            return std::noop_coroutine();
-        }
-        void await_resume() {
-            
-            if (!caller.get_promise()->no_yield) {
-                __sync_synchronize();
-            }
-
-            lock.lock();
-        }
-    };
+    
     private:
     sleepable* sleeper;
 
@@ -132,9 +101,7 @@ class single_wait_queue {
         }
     }
 
-    wait_queue_done done(spinlock& lock) {
-        return {this, lock};
-    }
+
 };
 
 

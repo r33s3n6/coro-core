@@ -308,8 +308,6 @@ bool user_process::run(){
     cpu::my_cpu()->save_context_and_run(resume_func);
 
 
-    __sync_synchronize();
-
     {
         auto guard = make_lock_guard(lock);
 
@@ -470,10 +468,6 @@ bool kernel_process::run(){
         c->save_context_and_switch_to(&_context);
 
         timer::stop_timer_interrupt();
-
-        //debug_core("pause kernel process %d, state=%d", pid, (int)_state);
-        
-        __sync_synchronize();
 
     }
 

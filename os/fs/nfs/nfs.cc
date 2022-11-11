@@ -287,7 +287,6 @@ task<uint32> nfs::alloc_block() {
     lock.unlock();
     
     // infof("nfs: alloc_block : %d", block_index);
-    __sync_synchronize();
     co_return block_index;
 
 }

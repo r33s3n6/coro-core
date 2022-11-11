@@ -1,17 +1,17 @@
 move constructor use std::swap
 
-wait queue has no locks
-
 interrupts do dynamic memory allocation is dangerous (dead lock)
 
 TODO:
 mm/heap_allocator
+vmalloc
+in_interrupt status variable
 
 
 
 accomplished:
 arch/
-atomic/ (except mutex)
+atomic/ 
 ccore/
 cxx/
 sbi/
