@@ -1,7 +1,7 @@
 #ifndef FS_INODE_H
 #define FS_INODE_H
 
-#include <string>
+#include "dentry.h"
 
 #include <ccore/types.h>
 #include <ccore/errno.h>
@@ -18,19 +18,21 @@
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 
-class inode;
-
-class dentry {
-    const char* name;
-    inode* _inode;
-    dentry* parent;
-    list<dentry*> children;
-};
 
 // coroutine inode
 class inode : noncopyable {
+    public:
+    enum inode_type : uint8 {
+        ITYPE_FILE,
+        ITYPE_DIR,
+        ITYPE_CHAR,
+        ITYPE_BLOCK,
+        ITYPE_FIFO,
+        ITYPE_SOCKET,
+        ITYPE_SYMLINK
+    };
 
-public:
+
     struct metadata_t {
         uint32 size;
         uint16 nlinks;
@@ -51,9 +53,15 @@ public:
     
     // we assume current inode is a directory
     virtual task<int32> create(dentry* new_dentry)  { co_return -EPERM; };
+    virtual task<int32> lookup(dentry* new_dentry) { co_return -EPERM; };
+
+    // generator
+    virtual task<dentry*> read_dir() { co_return nullptr; };
+
     virtual task<int32> link(dentry* old_dentry, dentry* new_dentry)  { co_return -EPERM; };
     virtual task<int32> symlink(dentry* old_dentry, dentry* new_dentry)  { co_return -EPERM; };
     virtual task<int32> unlink(dentry* old_dentry )  { co_return -EPERM; };
+    
     virtual task<int32> mkdir(dentry* new_dentry)  { co_return -EPERM; };
     virtual task<int32> rmdir(dentry* old_dentry)  { co_return -EPERM; };
 

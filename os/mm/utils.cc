@@ -1,4 +1,5 @@
 #include "utils.h"
+
 #include <ccore/types.h>
 
 extern "C" {
@@ -58,6 +59,24 @@ int memcmp(const void *v1, const void *v2, uint32 n) {
     }
 
     return 0;
+}
+
+char* strdup(const char* s) {
+    int len = strlen(s);
+    return strndup(s, len);
+}
+
+char* strndup(const char* s, uint32 n) {
+    char* ns = new char[n + 1];
+    memcpy(ns, s, n);
+    ns[n] = 0;
+    return ns;
+}
+
+int strcmp(const char *s1, const char *s2) {
+    while (*s1 && *s1 == *s2)
+        s1++, s2++;
+    return (uint8) *s1 - (uint8) *s2;
 }
 
 int strncmp(const char *p, const char *q, uint32 n) {

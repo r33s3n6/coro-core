@@ -275,6 +275,39 @@ task<int32> nfs_inode::create(dentry* new_dentry) {
     (void)(new_dentry);
     co_return -EPERM;
 }
+
+task<int32> nfs_inode::lookup(dentry* new_dentry) {
+    (void)(new_dentry);
+    co_return -EPERM;
+}
+// generator
+task<dentry*> nfs_inode::read_dir() {
+    uint32 offset = 0;
+    dirent _dirent;
+
+    // make metadata valid
+    co_await load();
+    
+    while (true) {
+        if (offset >= metadata.size) {
+            co_return nullptr;
+        }
+        int64 read_size = *co_await read(&_dirent, offset, sizeof(dirent));
+        if (read_size != sizeof(dirent)) {
+            warnf("read dirent failed");
+            co_return nullptr;
+        }
+        offset += sizeof(dirent);
+        if (_dirent.inode_number == 0) {
+            continue;
+        }
+        // TODO: auto new_dentry = kernel_dentry_cache.walk()
+        co_yield nullptr;
+
+    }
+}
+
+
 task<int32> nfs_inode::link(dentry* old_dentry, dentry* new_dentry) {
     (void)(old_dentry);
     (void)(new_dentry);

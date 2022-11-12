@@ -30,6 +30,7 @@ class list : noncopyable {
         bool operator==(const iterator& rhs) { return ptr == rhs.ptr; }
         bool operator!=(const iterator& rhs) { return ptr != rhs.ptr; }
         data_t& operator*() { return ptr->data; }
+        data_t* operator->() { return &ptr->data; }
     };
 
     struct reverse_iterator {

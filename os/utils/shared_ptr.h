@@ -2,7 +2,6 @@
 #define UTILS_SHARED_PTR_H
 
 #include <atomic/lock.h>
-#include <utils/log.h>
 #include <type_traits>
 
 struct ref_count_t {

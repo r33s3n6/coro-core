@@ -21,6 +21,10 @@ class nfs_inode : public inode {
     
     // we assume current inode is a directory
     virtual task<int32> create(dentry* new_dentry) override;
+    virtual task<int32> lookup(dentry* new_dentry) override;
+    // generator
+    virtual task<dentry*> read_dir() override;
+
     virtual task<int32> link(dentry* old_dentry, dentry* new_dentry) override;
     virtual task<int32> symlink(dentry* old_dentry, dentry* new_dentry) override;
     virtual task<int32> unlink(dentry* old_dentry ) override;

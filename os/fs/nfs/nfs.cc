@@ -2,8 +2,8 @@
 #include <arch/riscv.h>
 #include <ccore/types.h>
 
-#include "nfs.h"
 #include "inode.h"
+#include "nfs.h"
 
 #include <device/block/bdev.h>
 #include <device/block/buf.h>
@@ -179,12 +179,12 @@ task<void> nfs::make_fs(device_id_t device_id, uint32 nblocks) {
 
     temp_fs.inode_table = new nfs_inode(&temp_fs, INODE_TABLE_NUMBER);
     temp_fs.inode_table->init();
-    temp_fs.inode_table->metadata.type = T_FILE;
+    temp_fs.inode_table->metadata.type = inode::ITYPE_FILE;
 
 
     temp_fs.root_inode = temp_fs.get_inode(ROOT_INODE_NUMBER);
     temp_fs.root_inode->init();
-    temp_fs.root_inode->metadata.type = T_DIR;
+    temp_fs.root_inode->metadata.type = inode::ITYPE_DIR;
 
     // create one example file
     // TODO inumber alloc
@@ -192,7 +192,7 @@ task<void> nfs::make_fs(device_id_t device_id, uint32 nblocks) {
     temp_fs.sb.ninodes++;
 
     file_inode->init();
-    file_inode->metadata.type = T_FILE;
+    file_inode->metadata.type = inode::ITYPE_FILE;
     debugf("nfs: write file inode %d", file_inode->inode_number);
     int64 write_size = *co_await file_inode->write("hello world", 0, 12);
     if (write_size != 12) {
@@ -340,6 +340,7 @@ nfs_inode* nfs::get_inode(uint32 inode_number) {
 
     return new_inode;
 }
+
 task<void> nfs::put_inode(nfs_inode *inode){
     auto guard = make_lock_guard(lock);
     inode->dec_ref();
@@ -355,6 +356,5 @@ task<void> nfs::put_inode(nfs_inode *inode){
     co_return task_ok;
 }
 
+} // namespace nfs
 
-
-}

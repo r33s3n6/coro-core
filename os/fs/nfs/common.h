@@ -33,11 +33,6 @@ constexpr static uint32 DIRECT_DATA_SIZE    = NUM_DIRECT_DATA * BLOCK_SIZE;
 
 constexpr static uint32 MIN_CAPACITY        = 1024; // blocks
 
-enum inode_type : uint8 {
-    T_DIR     = 1,   // Directory
-    T_FILE    = 2,   // File
-};
-
 // On-disk inode structure
 struct dinode {
     uint32 size;
@@ -45,23 +40,19 @@ struct dinode {
     uint8 perm;
     uint8 type;
     uint32 next_addr_block;
-    uint32 addrs[NUM_DIRECT_DATA]; // Data block addresses
+    uint32 addrs[NUM_DIRECT_DATA]; // data block addresses
 };
 
 struct superblock {
-    uint32 magic;               // Must be FSMAGIC
-    uint32 total_blocks;        // Size of file system image (blocks)
-    uint32 total_generic_blocks;  // Number of data blocks
-    uint32 used_generic_blocks; // Number of used data blocks
-    
-    uint32 ninodes;              // Number of used inodes.
-
-    uint32 generic_block_start; // Block number of first generic block
-    uint32 next_free_bitmap;    // Next free bitmap block
-    dinode inode_table;         // Inodes
+    uint32 magic;                   // NFS_MAGIC
+    uint32 total_blocks;        
+    uint32 total_generic_blocks;  
+    uint32 used_generic_blocks; 
+    uint32 ninodes;                 // number of used inodes.
+    uint32 generic_block_start;     // block number of first generic block
+    uint32 next_free_bitmap;        // next free bitmap block
+    dinode inode_table;             // inode table
 };
-
-
 
 constexpr static uint32 INODES_PER_BLOCK    = BLOCK_SIZE / sizeof(dinode);
 
@@ -70,19 +61,9 @@ struct addr_block {
     uint32 addrs[NUM_ADDRS];
 };
 
-struct dinode_block {
-    struct dinode inodes[INODES_PER_BLOCK];
-};
-
 struct dirent {
     uint32 inode_number;
     char name[MAX_NAME_LENGTH];
-};
-
-constexpr static uint32 DIRENTS_PER_BLOCK = BLOCK_SIZE / sizeof(dirent);
-
-struct dirent_block {
-    dirent dirents[DIRENTS_PER_BLOCK];
 };
 
 

@@ -148,7 +148,7 @@ extern "C" void kernel_init(uint64 hartid, uint64 device_tree)
 
 	//magic = 0xbeefdead;
 
-
+    (void)(device_tree);
 
     // set pagetables 
     if (is_first){

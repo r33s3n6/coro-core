@@ -405,7 +405,7 @@ task<void> test_make_nfs(device_id_t device_id, uint32 times) {
     test_fs.print();
     inode* root = *co_await test_fs.get_root();
     auto metadata1 = *co_await root->get_metadata();
-    kernel_assert(metadata1->type == nfs::T_DIR, "metadata.type != T_DIR");
+    kernel_assert(metadata1->type == inode::ITYPE_DIR, "metadata.type != T_DIR");
 
     nfs::dirent first_file;
     int64 read_size = *co_await root->read(&first_file, 0, sizeof(nfs::dirent));
@@ -415,7 +415,7 @@ task<void> test_make_nfs(device_id_t device_id, uint32 times) {
     nfs::nfs_inode* file_inode = test_fs.get_inode(first_file.inode_number);
 
     auto metadata2 = *co_await file_inode->get_metadata();
-    kernel_assert(metadata2->type == nfs::T_FILE, "metadata.type != T_FILE");
+    kernel_assert(metadata2->type == inode::ITYPE_FILE, "metadata.type != T_FILE");
 
     // test file rw
     simple_file _file((inode*)file_inode);
@@ -497,7 +497,7 @@ task<void> test_make_nfs2(device_id_t device_id) {
     test_fs.print();
     inode* root = *co_await test_fs.get_root();
     auto metadata1 = *co_await root->get_metadata();
-    kernel_assert(metadata1->type == nfs::T_DIR, "metadata.type != T_DIR");
+    kernel_assert(metadata1->type == inode::ITYPE_DIR, "metadata.type != T_DIR");
 
     nfs::dirent first_file;
     int64 read_size = *co_await root->read(&first_file, 0, sizeof(nfs::dirent));
@@ -507,7 +507,7 @@ task<void> test_make_nfs2(device_id_t device_id) {
     nfs::nfs_inode* file_inode = test_fs.get_inode(first_file.inode_number);
 
     auto metadata2 = *co_await file_inode->get_metadata();
-    kernel_assert(metadata2->type == nfs::T_FILE, "metadata.type != T_FILE");
+    kernel_assert(metadata2->type == inode::ITYPE_FILE, "metadata.type != T_FILE");
 
     // test file rw
     simple_file _file((inode*)file_inode);
