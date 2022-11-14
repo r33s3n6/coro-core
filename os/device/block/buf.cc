@@ -155,12 +155,15 @@ task<void> block_buffer::destroy(device_id_t device_id) {
 
         auto& node = *old_it;
         auto guard = make_lock_guard(node.lock);
-        if(node.bdev->device_id == device_id) {
-            kernel_assert(node.reference_count == 0, "block_buffer::destroy: node.reference_count != 0");
-            // detach and put it into flush_list
-            // no need to mark dying, because no one can access it via buffer_list
-            flush_list.merge(buffer_list, old_it);
+        if (node.bdev) {
+            if(node.bdev->device_id == device_id) {
+                kernel_assert(node.reference_count == 0, "block_buffer::destroy: node.reference_count != 0");
+                // detach and put it into flush_list
+                // no need to mark dying, because no one can access it via buffer_list
+                flush_list.merge(buffer_list, old_it);
+            }
         }
+        
     }
     lock.unlock();
 

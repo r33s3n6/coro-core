@@ -10,7 +10,7 @@ class nfs_inode : public inode {
     public:
     nfs_inode(nfs* _fs, uint64 _inode_number) : inode(_fs->get_device_id(), _inode_number), _fs(_fs) {}
 
-    virtual ~nfs_inode() = default;
+    virtual ~nfs_inode();
 
     // inode operations
     // normally, these operations are called for file operations
@@ -34,6 +34,8 @@ class nfs_inode : public inode {
     // sync from disk to memory
     virtual task<int32> load() override;
     virtual task<int32> flush() override;
+    
+    virtual task<void> put() override;
 
     void init();
     void print();
@@ -75,6 +77,8 @@ class nfs_inode : public inode {
 
     template <bool _write>
     task<int64> data_rw(std::conditional_t<_write, const uint8 *, uint8*> buf, uint64 offset, uint64 size);
+
+    task<int32> __link(dentry* new_dentry, nfs_inode* _inode);
 };
 
 }

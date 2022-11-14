@@ -14,6 +14,15 @@ namespace nfs {
 uint32 nfs_inode::cache_hit = 0;
 uint32 nfs_inode::cache_miss = 0;
 
+nfs_inode::~nfs_inode(){
+    // set_dentry(nullptr);
+}
+
+task<void> nfs_inode::put() {
+    co_await _fs->put_inode(this);
+    co_return task_ok;
+}
+
 void nfs_inode::print(){
     infof("nfs_inode::print\ninode_number: %d\nperm: %d\nsize: %d\ntype: %d\naddrs[0]: %d\nnext_addr_block: %d", inode_number, metadata.perm, metadata.size, metadata.type, addrs[0], next_addr_block);
 }
@@ -266,22 +275,169 @@ task<const nfs_inode::metadata_t*> nfs_inode::get_metadata() {
 
 task<int32> nfs_inode::truncate(int64 size) {
     // resize inode
-    (void)(size);
-    co_return -EPERM;
+    
+    // TODO: only support truncate to 0 now
+    if (size != 0) {
+        co_return -1;
+    }
+
+
+    co_await load();
+
+    if (metadata.size == 0) {
+        co_return 0;
+    }
+
+    // free all direct data blocks
+    for (uint32 i = 0; i < NUM_DIRECT_DATA; i++) {
+        if (addrs[i] != (uint32)-1) {
+            co_await _fs->free_block(addrs[i]);
+            addrs[i] = (uint32)-1;
+        }
+    }
+
+    uint32 addr_block_index = next_addr_block;
+   
+    uint32 data_block_index = 0;
+
+    // free all indirect data blocks
+    while (addr_block_index != (uint32)-1) {
+        auto addr_block_buf_ref = *co_await kernel_block_buffer.get_node(device_id, addr_block_index);
+        auto addr_block_buf = *co_await addr_block_buf_ref.get_for_read();
+        
+        addr_block* _addr_block = (addr_block*)(addr_block_buf);
+        for (uint32 i = 0; i < NUM_ADDRS; i++) {
+            data_block_index = _addr_block->addrs[i];
+            if (data_block_index != (uint32)-1) {
+                co_await _fs->free_block(data_block_index);
+            }
+        }
+        uint32 next_addr_block_index = _addr_block->next_addr_block;
+        addr_block_buf_ref.put();
+
+        co_await _fs->free_block(addr_block_index);
+        addr_block_index = next_addr_block_index;
+    }
+    
+    next_addr_block = (uint32)-1;
+    metadata.size = 0;
+    metadata_dirty = true;
+
+    co_return 0;
+}
+
+task<int32> nfs_inode::__link(dentry* new_dentry, nfs_inode* _inode) {
+    // TODO: performance issue
+
+    dirent temp_dirent;
+    dirent new_dirent;
+    uint64 offset = 0;
+
+    // make metadata valid
+    co_await load();
+
+    new_dirent.inode_number = _inode->inode_number;
+    strncpy(new_dirent.name, new_dentry->name.data(), new_dentry->name.size());
+    new_dirent.name[new_dentry->name.size()] = 0;
+
+    co_await _inode->rw_lock.lock();
+    co_await _inode->load();
+
+    co_await _inode->set_dentry(new_dentry);
+    _inode->metadata.nlinks += 1;
+    _inode->metadata_dirty = true;
+
+    _inode->rw_lock.unlock();
+
+
+    // find empty slot
+    while (true) {
+        if (offset >= metadata.size) {
+            break;
+        }
+
+        int64 read_size = *co_await read(&temp_dirent, offset, sizeof(dirent));
+        if (read_size != sizeof(dirent)) {
+            warnf("read dirent failed");
+            co_return -1;
+        }
+        
+        if (temp_dirent.inode_number == 0) {
+            break;
+        }
+    }
+
+    co_await write(&new_dirent, offset, sizeof(dirent));
+
+    co_return 0;
 }
 
 
 task<int32> nfs_inode::create(dentry* new_dentry) {
-    (void)(new_dentry);
-    co_return -EPERM;
+
+    if (new_dentry->name.size() > MAX_NAME_LENGTH) {
+        co_return -EINVAL;
+    }
+    
+
+    auto new_inode = *co_await _fs->alloc_inode();
+
+    co_await new_inode->rw_lock.lock();
+    co_await new_inode->load();
+
+    new_inode->metadata.type = inode::ITYPE_FILE;
+    new_inode->metadata_dirty = true;
+
+    new_inode->rw_lock.unlock();
+
+    int32 ret = *co_await __link(new_dentry, new_inode);
+
+    co_await _fs->put_inode(new_inode);
+
+    co_return ret;
 }
 
 task<int32> nfs_inode::lookup(dentry* new_dentry) {
-    (void)(new_dentry);
-    co_return -EPERM;
+
+    if (new_dentry->name.size() > MAX_NAME_LENGTH) {
+        co_return -EINVAL;
+    }
+
+    uint32 offset = 0;
+    dirent _dirent;
+
+    // make metadata valid
+    co_await load();
+    
+    while (true) {
+        if (offset >= metadata.size) {
+            co_return -1;
+        }
+        int64 read_size = *co_await read(&_dirent, offset, sizeof(dirent));
+        if (read_size != sizeof(dirent)) {
+            warnf("read dirent failed");
+            co_return -1;
+        }
+        offset += sizeof(dirent);
+        if (_dirent.inode_number == 0) {
+            continue;
+        }
+
+        if (strcmp(_dirent.name, new_dentry->name.data()) == 0) {
+            // found
+            nfs_inode* new_inode = *co_await _fs->get_inode(_dirent.inode_number);
+            co_await new_inode->set_dentry(new_dentry);
+            co_await _fs->put_inode(new_inode);
+            co_return 0;
+        }
+
+    }
 }
 // generator
 task<dentry*> nfs_inode::read_dir() {
+    dentry* this_dentry = *co_await get_dentry();
+    kernel_assert(this_dentry->get_inode() == this, "parent inode mismatch");
+
     uint32 offset = 0;
     dirent _dirent;
 
@@ -301,31 +457,112 @@ task<dentry*> nfs_inode::read_dir() {
         if (_dirent.inode_number == 0) {
             continue;
         }
-        // TODO: auto new_dentry = kernel_dentry_cache.walk()
-        co_yield nullptr;
+
+        nfs_inode* new_inode = *co_await _fs->get_inode(_dirent.inode_number);
+
+        dentry* new_dentry = *co_await kernel_dentry_cache.create(this_dentry, _dirent.name, new_inode);
+
+        co_await _fs->put_inode(new_inode);
+
+        co_yield new_dentry;
 
     }
 }
 
 
 task<int32> nfs_inode::link(dentry* old_dentry, dentry* new_dentry) {
-    (void)(old_dentry);
-    (void)(new_dentry);
-    co_return -EPERM;
+    if (new_dentry->name.size() > MAX_NAME_LENGTH) {
+        co_return -EINVAL;
+    }
+
+    // if (!old_dentry->_inode) {
+    //     co_await lookup(old_dentry);
+    // }
+
+    nfs_inode* old_inode = (nfs_inode*)old_dentry->get_inode();
+
+    co_return *co_await __link(new_dentry, old_inode);
+
 }
 task<int32> nfs_inode::symlink(dentry* old_dentry, dentry* new_dentry) {
     (void)(old_dentry);
     (void)(new_dentry);
     co_return -EPERM;
 }
-task<int32> nfs_inode::unlink(dentry* old_dentry ) {
-    (void)(old_dentry);
-    co_return -EPERM;
+task<int32> nfs_inode::unlink(dentry* old_dentry) {
+    if (old_dentry->name.size() > MAX_NAME_LENGTH) {
+        co_return -EINVAL;
+    }
+
+    dirent _dirent;
+    uint32 offset = 0;
+
+    // make metadata valid
+    co_await load();
+
+    while (true) {
+        if (offset >= metadata.size) {
+            co_return -1;
+        }
+
+        int64 read_size = *co_await read(&_dirent, offset, sizeof(dirent));
+        if (read_size != sizeof(dirent)) {
+            warnf("read dirent failed");
+            co_return -1;
+        }
+        
+        if (_dirent.inode_number != 0) {
+            if (strcmp(_dirent.name, old_dentry->name.data()) == 0) {
+                // found
+                nfs_inode* old_inode;
+                
+                old_inode = (nfs_inode*)old_dentry->get_inode();
+
+
+                co_await old_inode->rw_lock.lock();
+
+                co_await old_inode->load();
+
+                old_inode->metadata.nlinks -= 1;
+                old_inode->metadata_dirty = true;
+
+                old_inode->rw_lock.unlock();
+
+                _dirent.inode_number = 0;
+                co_await write(&_dirent, offset, sizeof(dirent));
+
+                co_return 0;
+            }
+        }
+
+        offset += sizeof(dirent);
+
+        
+
+    }
 }
+
+
 task<int32> nfs_inode::mkdir(dentry* new_dentry) {
-    (void)(new_dentry);
-    co_return -EPERM;
+    if (new_dentry->name.size() > MAX_NAME_LENGTH) {
+        co_return -EINVAL;
+    }
+    
+
+    auto new_inode = *co_await _fs->alloc_inode();
+
+    co_await new_inode->rw_lock.lock();
+    co_await new_inode->load();
+
+    new_inode->metadata.type = inode::ITYPE_DIR;
+    new_inode->metadata_dirty = true;
+
+    new_inode->rw_lock.unlock();
+
+    co_return *co_await __link(new_dentry, new_inode);
 }
+
+// 
 task<int32> nfs_inode::rmdir(dentry* old_dentry) {
    (void)(old_dentry);
     co_return -EPERM;

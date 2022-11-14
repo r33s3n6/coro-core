@@ -8,6 +8,7 @@
 #include <ccore/types.h>
 
 #include <atomic/lock.h>
+#include <atomic/mutex.h>
 
 #include <mm/utils.h>
 #include <coroutine.h>
@@ -18,16 +19,32 @@ class inode;
 
 
 class dentry {
+    private:
+    inode* _inode = nullptr;
     public:
     quick_string name;
 
-    inode* _inode = nullptr;
+
     dentry* parent = nullptr;
     
     uint32 reference_count = 0;
     spinlock lock {"dentry.lock"};
     
     list<dentry*> children;
+
+    inode* get_inode() {
+        return _inode;
+    }
+    
+    ~dentry();
+
+private:
+    friend class inode;
+    friend class dentry_cache;
+
+    task<void> set_inode(inode* inode);
+
+
 
 
 };
@@ -36,7 +53,7 @@ class dentry {
 
 struct dentry_cache_entry {
     list<dentry> dentry_list;
-    spinlock lock {"dentry_cache_entry.lock"};
+    coro_mutex lock {"dentry_cache_entry.lock"};
 };
 
 // dentry cache (hash table with lrucache)
@@ -49,13 +66,16 @@ class dentry_cache {
     public:
 
 
-    void put(dentry& dentry) ;
-
-    task<dentry*> walk(dentry* parent, const char* name);
+    void put(dentry* dentry);
+    task<dentry*> get(dentry* parent, const quick_string_ref& name_ref);
+    task<dentry*> get(dentry* parent, const char* name);
+    task<dentry*> get_at(dentry* current, const char* path);
+    task<dentry*> create(dentry* parent, const char* name, inode* inode);
+    task<void> destroy();
     
     private:
     // return new dentry with lock held
-    dentry* __add(const quick_string_ref& name);
+    task<dentry*> __add(const quick_string_ref& name);
 
     task<dentry*> __reuse(const quick_string_ref& name);
 

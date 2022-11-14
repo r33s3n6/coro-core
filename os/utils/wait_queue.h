@@ -86,7 +86,7 @@ class single_wait_queue : public wait_queue_base {
     public:
     
     private:
-    sleepable* sleeper;
+    sleepable* sleeper = nullptr;
 
     public:
     void sleep(sleepable* sleeper) {

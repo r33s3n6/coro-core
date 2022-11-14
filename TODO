@@ -6,7 +6,7 @@ TODO:
 mm/heap_allocator
 vmalloc
 in_interrupt status variable
-
+rw_lock for nfs_inode
 
 
 accomplished:

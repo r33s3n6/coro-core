@@ -44,7 +44,7 @@ class quick_string : noncopyable {
         destroy();
         _size = size;
         _data = strndup(data, size);
-        _hash = __hash(_data);
+        _hash = __hash(_data, _size);
     }
 
     void destroy() {
@@ -64,9 +64,9 @@ class quick_string : noncopyable {
 
     uint32 hash() const { return _hash; }
 
-    static uint32 __hash(const char* name) {
+    static uint32 __hash(const char* name, uint32 size) {
         uint32 hash = 0;
-        while (*name) {
+        while (size--) {
             hash = hash * 131 + *name;
             name++;
         }
@@ -91,7 +91,13 @@ class quick_string_ref {
     quick_string_ref(const char* data) {
         _data = data;
         _size = strlen(data);
-        _hash = quick_string::__hash(data);
+        _hash = quick_string::__hash(data, _size);
+    }
+
+    quick_string_ref(const char* data, uint32 size) {
+        _data = data;
+        _size = size;
+        _hash = quick_string::__hash(data, _size);
     }
 
     const char* data() const { return _data; }

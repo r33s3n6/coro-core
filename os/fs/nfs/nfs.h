@@ -22,7 +22,9 @@ class nfs : public filesystem {
     task<uint32> alloc_block();
     task<void> free_block(uint32 block_index);
 
-    nfs_inode* get_inode(uint32 inode_number);
+    task<nfs_inode*> alloc_inode();
+    task<void> free_inode(uint32 inode_index);
+    task<nfs_inode*> get_inode(uint32 inode_number);
     task<void> put_inode(nfs_inode *inode);
 
     static task<void> make_fs(device_id_t device_id, uint32 nblocks);
@@ -35,6 +37,7 @@ class nfs : public filesystem {
     superblock sb;
     bool sb_dirty = false;
     nfs_inode *root_inode = nullptr;
+    // dentry* root_dentry = nullptr;
     nfs_inode *inode_table = nullptr; // inode table inode
     list<nfs_inode*> inode_list;
     spinlock lock { "nfs.lock" };

@@ -23,13 +23,15 @@
 class inode : noncopyable {
     public:
     enum inode_type : uint8 {
-        ITYPE_FILE,
+        ITYPE_NONE = 0,
+        ITYPE_FILE = 1,
         ITYPE_DIR,
         ITYPE_CHAR,
         ITYPE_BLOCK,
         ITYPE_FIFO,
         ITYPE_SOCKET,
-        ITYPE_SYMLINK
+        ITYPE_SYMLINK,
+        ITYPE_NEXT_FREE_INODE
     };
 
 
@@ -69,20 +71,33 @@ class inode : noncopyable {
     virtual task<int32> load()  { co_return -EPERM; };
     virtual task<int32> flush()  { co_return -EPERM; };
 
-    void inc_ref() {
-        auto guard = make_lock_guard(ref_lock);
-        reference_count++;
+    virtual void get() {
+        inc_ref();
     }
+    virtual task<void> put() { dec_ref(); co_return task_ok; };
 
-    void dec_ref() {
-        auto guard = make_lock_guard(ref_lock);
-        reference_count--;
-    }
+    task<dentry*> get_dentry();
+    task<void> set_dentry(dentry* _dentry);
 
     uint64 get_ref() {
         auto guard = make_lock_guard(ref_lock);
         return reference_count;
     }
+
+    protected:
+
+    void inc_ref() {
+        auto guard = make_lock_guard(ref_lock);
+        reference_count++;
+    }
+
+    int dec_ref() {
+        auto guard = make_lock_guard(ref_lock);
+        reference_count--;
+        return reference_count;
+    }
+
+
 
 public:
     // spinlock rw_lock;
@@ -97,10 +112,15 @@ public:
 
     // metadata
 protected:
+
     bool metadata_valid = false;
     bool metadata_dirty = false;
     metadata_t metadata;
 
+private:
+friend class dentry;
+    // weak reference to dentry
+    dentry* this_dentry = nullptr;
 
 };
 
@@ -197,13 +217,13 @@ class simple_file : public file {
     }
 
     task<int32> open() override {
-        _inode->inc_ref();
+        _inode->get();
         offset = 0;
         co_return 0;
     }
 
     task<int32> close() override {
-        _inode->dec_ref();
+        co_await _inode->put();
         co_return 0;
     }
 

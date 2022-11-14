@@ -46,8 +46,14 @@ void* operator new(std::size_t size) {
         panic("operator new: size > 1024");
     }
 
+    if (size == 1) {
+        return kernel_heap_allocator_8.alloc();
+    }
+
     void* ptr = nullptr;
     switch (log2_64(size-1)) {
+        case 0:
+        case 1:
         case 2:
             ptr = kernel_heap_allocator_8.alloc();
             break;
@@ -78,6 +84,7 @@ void* operator new(std::size_t size) {
             // panic("new failed");
             break;
     }
+
     if (((uint64)ptr & (PGSIZE-1)) == 0) {
         panic("new: ptr is page-aligned");
     }
