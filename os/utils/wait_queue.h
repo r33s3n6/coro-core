@@ -60,7 +60,7 @@ class wait_queue : public wait_queue_base {
     list<sleepable*> sleepers;
 
     public:
-    void sleep(sleepable* sleeper) {
+    void sleep(sleepable* sleeper) override {
         sleepers.push_back(sleeper);
         sleeper->sleep();
     }
@@ -89,7 +89,7 @@ class single_wait_queue : public wait_queue_base {
     sleepable* sleeper = nullptr;
 
     public:
-    void sleep(sleepable* sleeper) {
+    void sleep(sleepable* sleeper) override  {
         this->sleeper = sleeper;
         sleeper->sleep();
     }

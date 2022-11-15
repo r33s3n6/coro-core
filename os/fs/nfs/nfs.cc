@@ -55,11 +55,10 @@ uint32 bitmap_get(const uint64 *bitmap, uint32 index) {
 task<void> nfs::mount(device_id_t _device_id) {
     device_id = _device_id;
 
-    auto buf_ref = *co_await kernel_block_buffer.get_node(device_id, SUPER_BLOCK_INDEX);
+    auto buf_ptr = *co_await kernel_block_buffer.get_node(device_id, SUPER_BLOCK_INDEX);
+    auto buf_ref = *co_await buf_ptr->get_ref();
 
-    auto buf = *co_await buf_ref.get_for_read();
-
-    superblock *temp_sb = (superblock*)buf;
+    superblock *temp_sb = (superblock*)buf_ref->data;
     if(temp_sb->magic != NFS_MAGIC) {
         warnf("nfs: magic number mismatch: %p", (void*)(uint64)temp_sb->magic);
 
@@ -128,9 +127,12 @@ task<void> nfs::unmount() {
     delete inode_table;
 
     if (sb_dirty) {
-        auto buf_ref = *co_await kernel_block_buffer.get_node(device_id, SUPER_BLOCK_INDEX);
-        auto buf = *co_await buf_ref.get_for_write();
-        *(superblock*)buf = sb;
+        auto buf_ptr = *co_await kernel_block_buffer.get_node(device_id, SUPER_BLOCK_INDEX);
+        auto buf_ref = *co_await buf_ptr->get_ref();
+
+        *(superblock*)(buf_ref->data) = sb;
+        buf_ref->mark_dirty();
+
         sb_dirty = false;
     }
 
@@ -172,17 +174,20 @@ task<void> nfs::make_fs(device_id_t device_id, uint32 nblocks) {
 
     // set all bitmap blocks to 0
     for (uint32 i = BITMAP_BLOCK_INDEX; i < temp_fs.sb.generic_block_start; i++) {
-        auto buf_ref = *co_await kernel_block_buffer.get_node(device_id, i);
-        auto buf = *co_await buf_ref.get_for_write();
-        memset(buf, 0, BLOCK_SIZE);
+        auto buf_ptr = *co_await kernel_block_buffer.get_node(device_id, i);
+        auto buf_ref = *co_await buf_ptr->get_ref();
+        memset(buf_ref->data, 0, BLOCK_SIZE);
+        buf_ref->mark_dirty();
     }
 
     {
-        auto buf_ref = *co_await kernel_block_buffer.get_node(device_id, BITMAP_BLOCK_INDEX);
-        auto buf = *co_await buf_ref.get_for_write();
+        auto buf_ptr = *co_await kernel_block_buffer.get_node(device_id, BITMAP_BLOCK_INDEX);
+        auto buf_ref = *co_await buf_ptr->get_ref();
+        auto buf = (uint64*)buf_ref->data;
         for (uint32 i = 0; i < temp_fs.sb.generic_block_start; i++) {
-            bitmap_set((uint64*)buf, i);
+            bitmap_set(buf, i);
         }
+        buf_ref->mark_dirty();
     }
     
 
@@ -224,14 +229,16 @@ task<uint32> nfs::alloc_block() {
     lock.unlock();
 
     uint32 __block_index;
-    block_buffer_node_ref buf_ref;
+    block_buffer::buffer_ptr_t buf_ptr;
+    block_buffer::buffer_ref_t buf_ref;
 
     void* temp_save;
     void* temp_save_bitmap;
 
     for (; bitmap_index < sb.generic_block_start; bitmap_index++){
-        buf_ref = *co_await kernel_block_buffer.get_node(device_id, bitmap_index);
-        const uint64* const_bitmap = (const uint64*)*co_await buf_ref.get_for_read();
+        buf_ptr = *co_await kernel_block_buffer.get_node(device_id, bitmap_index);
+        buf_ref = *co_await buf_ptr->get_ref();
+        const uint64* const_bitmap = (const uint64*)buf_ref->data;
 
         __block_index = bitmap_find_first_zero(const_bitmap, BLOCK_SIZE / sizeof(uint64));
 
@@ -247,15 +254,12 @@ task<uint32> nfs::alloc_block() {
         co_return task_fail;
     }
 
-    uint64* bitmap = (uint64*)*co_await buf_ref.get_for_write();
+    uint64* bitmap = (uint64*)buf_ref->data;
 
     bitmap_set(bitmap, __block_index);
-
-    // debugf("set bitmap %d %d", bitmap_index, __block_index);
-    // debugf("first 2 8-bytes: %p %p", (void*)bitmap[0], (void*)bitmap[1]);
-    
-    buf_ref.put();
-
+    buf_ref->mark_dirty();
+    buf_ref->put();
+    buf_ptr.reset(nullptr);
     
 
     if (block_index < sb.generic_block_start) {
@@ -295,8 +299,9 @@ task<void> nfs::free_block(uint32 block_index) {
     uint32 bitmap_index = BITMAP_BLOCK_INDEX + block_index / BITMAP_BLOCK_SIZE;
     uint32 __block_index = block_index % BITMAP_BLOCK_SIZE;
 
-    auto buf_ref = *co_await kernel_block_buffer.get_node(device_id, bitmap_index);
-    uint64* bitmap = (uint64*)*co_await buf_ref.get_for_write();
+    auto buf_ptr = *co_await kernel_block_buffer.get_node(device_id, bitmap_index);
+    auto buf_ref = *co_await buf_ptr->get_ref();
+    uint64* bitmap = (uint64*)buf_ref->data;
 
     lock.lock();
 
@@ -308,6 +313,7 @@ task<void> nfs::free_block(uint32 block_index) {
 
     bitmap_clear(bitmap, __block_index);
     buf_ref.put();
+    buf_ptr.reset(nullptr);
     
     sb.used_generic_blocks--;
     // sb.next_free_bitmap = bitmap_index;

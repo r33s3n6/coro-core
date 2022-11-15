@@ -60,7 +60,7 @@ void test_bind_core(void* arg){
     uint64 __id = c->get_core_id();
     debug_core("test_bind_core: pid:%d,expect core:%d core %d", task_id, __expect_core, __id);
 }
-
+/*
 task<void> test_disk_read(int block_no, int len) {
     debugf("test_disk_read: block_no: %d, len: %d", block_no, len);
     auto buffer_ref = co_await kernel_block_buffer.get_node(virtio_disk_id, block_no);
@@ -130,6 +130,7 @@ task<void> test_buffer_reuse() {
     }
     co_return task_ok;
 }
+*/
 
 static uint64 random_seed = 1423;
 uint64 random() {
@@ -150,21 +151,24 @@ task<void> test_coherence(device_id_t test_device) {
     }
 
     for(int i = 0; i < 1024; i++) {
-        auto buffer_ref = *co_await kernel_block_buffer.get_node(test_device, i);
+        auto buffer_ptr = *co_await kernel_block_buffer.get_node(test_device, i);
+        auto buffer_ref = *co_await buffer_ptr->get_ref();
         
         // try to get buffer for write
-        uint8* buf = *co_await buffer_ref.get_for_write();
+        uint8* buf = buffer_ref->data;
         random_store[i] = random();
         ((uint64*)buf)[0] = random_store[i];
+        buffer_ref->mark_dirty();
     }
 
     // check coherence 1
 
     for(int i = 0; i < 1024; i++) {
-        auto buffer_ref = *co_await kernel_block_buffer.get_node(test_device, i);
+        auto buffer_ptr = *co_await kernel_block_buffer.get_node(test_device, i);
+        auto buffer_ref = *co_await buffer_ptr->get_ref();
         
         // try to get buffer for read
-        const uint8* buf = *co_await buffer_ref.get_for_read();
+        const uint8* buf = buffer_ref->data;
         uint64 val = ((uint64*)buf)[0];
         if(val != random_store[i]) {
             debug_core("test_coherence: coherence 1 failed: i: %d, val: %p, random_store[i]: %p", i, (void*)val, (void*)random_store[i]);
@@ -178,10 +182,11 @@ task<void> test_coherence(device_id_t test_device) {
     // check coherence 2
 
     for(int i = 0; i < 1024; i++) {
-        auto buffer_ref = *co_await kernel_block_buffer.get_node(test_device, i);
+        auto buffer_ptr = *co_await kernel_block_buffer.get_node(test_device, i);
+        auto buffer_ref = *co_await buffer_ptr->get_ref();
         
         // try to get buffer for read
-        const uint8* buf = *co_await buffer_ref.get_for_read();
+        const uint8* buf = buffer_ref->data;
         uint64 val = ((uint64*)buf)[0];
         if(val != random_store[i]) {
             debug_core("test_coherence: coherence 2 failed: i: %d, val: %p, random_store[i]: %p", i, (void*)val, (void*)random_store[i]);
@@ -201,14 +206,18 @@ class test_bdev_coherence  {
     single_wait_queue _wait_queue;
     uint32 _subtask_complete;
     spinlock lock;
+    bool _test_ok = false;
 
     task<void> subtask_write(device_id_t test_device, uint32 block_no, uint64* random_store_ptr) {
         uint64 random_store = random();
-        auto buffer_ref = *co_await kernel_block_buffer.get_node(test_device, block_no);
-
-        // try to get buffer for write
-        uint8* buf = *co_await buffer_ref.get_for_write();
-        ((uint64*)buf)[0] = random_store;
+        {
+            auto buffer_ptr = *co_await kernel_block_buffer.get_node(test_device, block_no);
+            auto buffer_ref = *co_await buffer_ptr->get_ref();
+            // try to get buffer for write
+            uint8* buf = buffer_ref->data;
+            ((uint64*)buf)[0] = random_store;
+            buffer_ref->mark_dirty();
+        }
 
         *random_store_ptr = random_store;
 
@@ -223,14 +232,17 @@ class test_bdev_coherence  {
     }
 
     task<void> subtask_read(device_id_t test_device, uint32 block_no, uint64 random_store, int index, int pass) {
+        {
+            auto buffer_ptr = *co_await kernel_block_buffer.get_node(test_device, block_no);
+            auto buffer_ref = *co_await buffer_ptr->get_ref();
+            // try to get buffer for read
+            const uint8* buf = buffer_ref->data;
 
-        auto buffer_ref = *co_await kernel_block_buffer.get_node(test_device, block_no);
+            uint64 val = ((uint64*)buf)[0];
+            if(val != random_store) {
+                debug_core("test_coherence 2: coherence %d failed: index: %d, val: %p, expect: %p", pass, index, (void*)val, (void*)random_store);
+            }
 
-        // try to get buffer for read
-        const uint8* buf = *co_await buffer_ref.get_for_read();
-        uint64 val = ((uint64*)buf)[0];
-        if(val != random_store) {
-            debug_core("test_coherence 2: coherence %d failed: index: %d, val: %p, expect: %p", pass, index, (void*)val, (void*)random_store);
         }
 
         lock.lock();
@@ -244,6 +256,7 @@ class test_bdev_coherence  {
     }
 
 public:
+    test_bdev_coherence() {}
     task<void> get_test(device_id_t test_device) {
         debug_core("test_coherence");
 
@@ -294,6 +307,7 @@ public:
         while(_subtask_complete < 1024) {
             co_await _wait_queue.done(lock);
         }
+        _test_ok = true;
         lock.unlock();
 
 
@@ -302,6 +316,12 @@ public:
         co_return task_ok;
 
     }
+
+    bool is_success() {
+        auto guard = make_lock_guard(lock);
+        return _test_ok;
+    }
+
 
 };
 
@@ -318,6 +338,10 @@ void test_disk_rw(void*){
     // auto task = test_coherence2(virtio_disk_id);
 
     kernel_task_queue.push(test.get_test(virtio_disk_id));
+
+    while(!test.is_success()) {
+        cpu::my_cpu()->yield();
+    }
 
     // for (int i = 0; i < 10;i++) {
     //    kernel_task_queue.push(test_disk_write(0, (uint8*)"hello\0", 5, i));
@@ -610,7 +634,7 @@ task<void> test_make_nfs2(device_id_t device_id) {
 void test_nfs(void*){
     
     // kernel_task_queue.push(test_make_nfs(ramdisk_id, 64 * 1024));
-    kernel_task_queue.push(test_make_nfs(virtio_disk_id, 4 * 1024));
+    kernel_task_queue.push(test_make_nfs(virtio_disk_id, 64 * 1024));
 
     // kernel_task_queue.push(test_make_nfs2(virtio_disk_id));
 }

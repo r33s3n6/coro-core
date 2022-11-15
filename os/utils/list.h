@@ -16,37 +16,41 @@ class list : noncopyable {
         // char dummy[128];
     };
 
-    struct iterator {
+    struct iterator_base {
+        public:
         node* ptr;
-        iterator(node* ptr) : ptr(ptr) {}
-        iterator& operator++() {
-            ptr = ptr->next;
-            return *this;
-        }
-        iterator& operator--() {
-            ptr = ptr->prev;
-            return *this;
-        }
-        bool operator==(const iterator& rhs) { return ptr == rhs.ptr; }
-        bool operator!=(const iterator& rhs) { return ptr != rhs.ptr; }
+        public:
+        iterator_base(node* ptr) : ptr(ptr) {}
+        bool operator==(const iterator_base& rhs) { return ptr == rhs.ptr; }
+        bool operator!=(const iterator_base& rhs) { return ptr != rhs.ptr; }
         data_t& operator*() { return ptr->data; }
         data_t* operator->() { return &ptr->data; }
     };
 
-    struct reverse_iterator {
-        node* ptr;
-        reverse_iterator(node* ptr) : ptr(ptr) {}
+    struct iterator : public iterator_base {
+        
+        iterator(node* ptr) : iterator_base(ptr) {}
+        iterator& operator++() {
+            this->ptr = this->ptr->next;
+            return *this;
+        }
+        iterator& operator--() {
+            this->ptr = this->ptr->prev;
+            return *this;
+        }
+        
+    };
+
+    struct reverse_iterator : public iterator_base {
+        reverse_iterator(node* ptr) : iterator_base(ptr) {}
         reverse_iterator& operator++() {
-            ptr = ptr->prev;
+            this->ptr = this->ptr->prev;
             return *this;
         }
         reverse_iterator& operator--() {
-            ptr = ptr->next;
+            this->ptr = this->ptr->next;
             return *this;
         }
-        bool operator==(const reverse_iterator& rhs) { return ptr == rhs.ptr; }
-        bool operator!=(const reverse_iterator& rhs) { return ptr != rhs.ptr; }
-        data_t& operator*() { return ptr->data; }
     };
 
     list() {
@@ -75,17 +79,19 @@ class list : noncopyable {
     }
 
     template <typename X>
-    void push_back(X&& data) {
+    iterator push_back(X&& data) {
         static_assert(std::is_same_v<data_t, std::decay_t<X>>, "X must be the same type of data_t");
         node* new_node = __push_back();
         new_node->data = std::forward<X>(data);
+        return iterator(new_node);
     }
 
     template <typename X>
-    void push_front(X&& data) {
+    iterator push_front(X&& data) {
         static_assert(std::is_same_v<data_t, std::decay_t<X>>, "X must be the same type of data_t");
         node* new_node = __push_front();
         new_node->data = std::forward<X>(data);
+        return iterator(new_node);
     }
 
     data_t& front() { return head->next->data; }
@@ -126,7 +132,7 @@ class list : noncopyable {
 
     reverse_iterator rend() { return reverse_iterator(head); }
 
-    void merge(list& other, iterator other_it) {
+    void merge(list& other, iterator_base other_it) {
         if (other_it == other.end()) {
             return;
         }
@@ -166,14 +172,14 @@ class list : noncopyable {
         other._size = 0;
     }
 
-    void erase(iterator it) { 
+    void erase(iterator_base it) { 
         if (it.ptr == head || it.ptr == tail) {
             panic("list::erase");
         }
         __remove(it.ptr);
     }
 
-    void insert_after(iterator it, const data_t& data) {
+    void insert_after(iterator_base it, const data_t& data) {
         if (it.ptr == tail) {
             panic("insert_after: iterator is end()");
         }
@@ -186,7 +192,7 @@ class list : noncopyable {
 
         _size++;
     }
-    void insert_before(iterator it, const data_t& data) {
+    void insert_before(iterator_base it, const data_t& data) {
         if (it.ptr == head) {
             panic("insert_before: iterator is begin()");
         }
@@ -201,11 +207,7 @@ class list : noncopyable {
     }
 
 
-    void move_to_front(iterator it) {
-        __move_to_front(it.ptr);
-    }
-
-    void move_to_front(reverse_iterator it) {
+    void move_to_front(iterator_base it) {
         __move_to_front(it.ptr);
     }
 

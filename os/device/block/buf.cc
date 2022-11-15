@@ -5,103 +5,45 @@
 
 block_buffer kernel_block_buffer;
 
-task<void> block_buffer_node::get() {
-    lock.lock();
-    while (in_use) {
-        co_await queue.done(lock);
-    } 
-    
-    in_use = true;
-    lock.unlock();
-    //debugf("block_buffer_node::get: block_no=%d", block_no);
+
+task<void> block_buffer_node::__load() {
+    // debugf("block_buffer: load node %d", block_no);
+    co_await bdev->read(block_no, 1, data);
+    co_return task_ok;
+}
+task<void> block_buffer_node::__flush() {
+    // debugf("block_buffer: flush node %d", block_no);
+    co_await bdev->write(block_no, 1, data);
     co_return task_ok;
 }
 
-void block_buffer_node::put(){
-    lock.lock();
 
-    in_use = false;
-    queue.wake_up_one();
-    lock.unlock();
-}
-
-task<void> block_buffer_node::flush(){
-
-    // debugf("block_buffer_node::flush: in_use: %d, ref_count: %d, block_no: %d", in_use, reference_count, block_no);
-
-    // uint64* data_buf = (uint64*)data;
-    // debugf("first 64 bytes: %p %p %p %p %p %p %p %p", (void*)data_buf[0],  (void*)data_buf[1],  (void*)data_buf[2],
-    //  (void*) data_buf[3],  (void*)data_buf[4],  (void*)data_buf[5],  (void*)data_buf[6],  (void*)data_buf[7]);
-
-    co_await get();
-
-    //debugf("block_buffer_node::flush: get the buffer done");
-
-    co_await __sync_to_device();
-
-    // debugf("block_buffer_node::flush: sync to device done");
-
-    put();
-    
-    co_return task_ok;
-}
-
-task<uint8*> block_buffer_node_ref::get(){
-    if (!hold) {
-        co_await node->get();
-        hold = true;
-        // debugf("block_buffer_node_ref::get: block_no = %l", node->block_no);
-        // if(node->block_no > node->bdev->capacity()) {
-        //     panic("block_buffer_node::__sync_from_device: block_no > bdev->capacity()");
-        // }
-        
-        co_await node->__sync_from_device();
-        
-    }
-
-    // debugf("block_buffer_node_ref::get: block_no = %d", node->block_no);
-    // if ( node->block_no == 2 || node->block_no == 20) {
-    //     uint64* data_buf = (uint64*)node->data;
-    //     debug_core("[block 2] first 8 bytes: %p", (void*)data_buf[0]);
-    // }
-    
-
-    co_return node->data;
-}
-
-void block_buffer_node::init(block_device* bdev, uint64 block_no) {
-    if (reference_count != 0) {
-        panic("block_buffer_node.init: reference_count != 0");
-    }
-
-    if (!data) {
-        data = new uint8[block_device::BLOCK_SIZE];
-    }
-
-    // debugf("block_buffer_node::init: %d -> %d",this->block_no, block_no);
-    
-    this->bdev = bdev;
-    this->block_no = block_no;
-    valid = false;
-    dirty = false;
-    dying = false;
-    in_use = false;
-    reference_count = 0;
-
-}
-
-task<block_buffer_node_ref> block_buffer::get_node(device_id_t device_id, uint64 block_no) {
+task<block_buffer::buffer_ptr_t> block_buffer::get_node(device_id_t device_id, uint64 block_no) {
     auto bdev = device::get<block_device>(device_id);
     lock.lock();
     
+    bool in_flush = false;
+    do {
+        in_flush = false;
+        for (auto& node : flush_list) {
+            if (node->match(bdev, block_no)) {
+
+                in_flush = true;
+                // debugf("block_buffer: wait flush %d", block_no);
+                co_await flush_queue.done(lock);
+                break;
+            }
+        }
+    } while(in_flush);
+
 
     for(auto it = buffer_list.begin(); it != buffer_list.end(); ++it) {
         auto& node = *it;
-        if(node.match(bdev, block_no)) {
+        if(node->__get_derived().match(bdev, block_no)) {
             // put node at the front of the list
             buffer_list.move_to_front(it);
             lock.unlock();
-            co_return block_buffer_node_ref{&node};
+            co_return node;
         }
     }
 
@@ -112,64 +54,118 @@ task<block_buffer_node_ref> block_buffer::get_node(device_id_t device_id, uint64
         for (auto it = buffer_list.rbegin(); it != buffer_list.rend(); ++it) {
             auto& node = *it;
 
-            auto guard = make_lock_guard(node.lock);
-            if (node.reference_count == 0) { // we have lock, so it's safe
+            // we are the only shared_ptr, then we detach weak_ptr to node
+            if (node.try_detach_weak()) {
                 unused = it;
                 break;
             }
         }
     }
-    
-    if(unused == buffer_list.rend()) {
-        block_buffer_node& new_buffer = buffer_list.push_front();
-        lock.unlock();
 
-        new_buffer.init(bdev, block_no);
-        co_return block_buffer_node_ref{&new_buffer};
+    // list<buffer_ptr_t> temp_list;
+    buffer_ptr_t buf;
+
+
+    // we must push a new node
+    if(unused == buffer_list.rend()) {
+        if (buffer_list.size() >= MAX_BUFFER_COUNT) {
+            // we failed
+            lock.unlock();
+            co_return task_fail;
+        }
+
+        // create a new node
+        buf = make_shared<block_buffer_node>();
+        // debugf("block_buffer: create new node for %d", block_no);
+
+    } else {
+        buf = *unused;
+
+        buffer_list.erase(unused);
+
     }
 
-    buffer_list.move_to_front(unused);
+    if(!buf->is_dirty()) {
 
-    auto& node = *unused;
+        buf->__get_derived().init(bdev, block_no);
+        buffer_list.push_front(buf);
+        lock.unlock();
 
-    // do not allow any new reference to this node
-    node.mark_dying();
+        co_return buf;
+    }
+
+    auto flush_it = flush_list.push_back(buf);
 
     lock.unlock();
 
-    co_await node.flush();
+    // uint32 old_block_no = buf->__get_derived().get_block_no();
 
-    // we can assert there's no reference to this buffer
-    node.init(bdev, block_no);
+    // kernel_assert(buf.use_count()==1, "block_buffer::get_node: buf.use_count() != 1");
+    // kernel_assert(buf->bdev!=nullptr, "block_buffer::get_node: buf->bdev == nullptr");
+    
+    co_await buf->flush();
+    lock.lock();
+    flush_list.erase(flush_it);
 
-    co_return block_buffer_node_ref{&node};
+    flush_queue.wake_up_all();
+
+    
+    // debugf("block_buffer: block %d -> %d", old_block_no, block_no);
+
+    // merge it back is dangerous, because someone may added it too
+    
+    // TODO: performance
+    buffer_ptr_t ret_buf;
+    for(auto& node: buffer_list) {
+        if(node->__get_derived().match(bdev, block_no)) {
+            ret_buf = node;
+            break;
+        }
+    }
+
+    buffer_list.push_front(buf);
+
+    if(!ret_buf) {
+        buf->__get_derived().init(bdev, block_no);
+        ret_buf = std::move(buf);
+    } else {
+        buf->__get_derived().init(nullptr, 0);
+    }
+    
+    
+    lock.unlock();
+
+    co_return ret_buf;
 }
 
 task<void> block_buffer::destroy(device_id_t device_id) {
-    list<block_buffer_node> flush_list;
+    list<buffer_ptr_t> flush_list;
     lock.lock();
+
+    uint32 failed_count = 0;
+
     auto it = buffer_list.begin();
     while(it != buffer_list.end()) {
         auto old_it = it;
         ++it;
 
         auto& node = *old_it;
-        auto guard = make_lock_guard(node.lock);
-        if (node.bdev) {
-            if(node.bdev->device_id == device_id) {
-                kernel_assert(node.reference_count == 0, "block_buffer::destroy: node.reference_count != 0");
+        if(node->__get_derived().match(device_id)) {
+            if (node.try_detach_weak()) {
                 // detach and put it into flush_list
-                // no need to mark dying, because no one can access it via buffer_list
                 flush_list.merge(buffer_list, old_it);
+            } else {
+                // we failed
+                failed_count++;
+                // warnf("block_buffer: block_no: %d, ref: %d", node->__get_derived().get_block_no(), node.use_count());
             }
         }
-        
     }
     lock.unlock();
 
     for(auto& node : flush_list) {
-        co_await node.flush();
-        node.init(nullptr, 0);
+        co_await node->flush();
+        node->__get_derived().init(nullptr, 0);
     }
 
     // add it back to buffer_list
@@ -178,6 +174,9 @@ task<void> block_buffer::destroy(device_id_t device_id) {
     buffer_list.merge(flush_list);
     lock.unlock();
 
-
+    if (failed_count) {
+        warnf("block_buffer: destroy failed: %d nodes are still in use", failed_count);
+        co_return task_fail;
+    }
     co_return task_ok;
 }
