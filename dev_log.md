@@ -331,5 +331,15 @@ task<void> virtio_disk::disk_rw_done(int id) {
 2. 检测未使用的协程
 
 
+
+### 第十周(11.14-11.20)
+
+#### 进展
+
+1. 异步文件系统雏形,`dentry cache`
+2. 注意到`inode cache`,`dentry cache`,`block device buffer`十分类似，抽象了一层`buffer`出来统一处理引用计数，休眠锁的逻辑。
+
+
 #### 疑问
-qemu上缓存和DMA一致性的问题
+
+1. qemu上缓存和DMA一致性的问题
