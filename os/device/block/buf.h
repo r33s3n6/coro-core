@@ -74,7 +74,7 @@ class block_buffer {
     constexpr static int32 MAX_BUFFER_COUNT = 10240;
     
 public:
-    //using buffer_t = referenceable_buffer<block_buffer_node>;
+
     using buffer_t = block_buffer_node;
     using buffer_ref_t = reference_guard<buffer_t>;
     using buffer_ptr_t = shared_ptr<buffer_t>;

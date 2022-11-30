@@ -39,7 +39,7 @@ task<block_buffer::buffer_ptr_t> block_buffer::get_node(device_id_t device_id, u
 
     for(auto it = buffer_list.begin(); it != buffer_list.end(); ++it) {
         auto& node = *it;
-        if(node->__get_derived().match(bdev, block_no)) {
+        if(node->match(bdev, block_no)) {
             // put node at the front of the list
             buffer_list.move_to_front(it);
             lock.unlock();
@@ -87,7 +87,7 @@ task<block_buffer::buffer_ptr_t> block_buffer::get_node(device_id_t device_id, u
 
     if(!buf->is_dirty()) {
 
-        buf->__get_derived().init(bdev, block_no);
+        buf->init(bdev, block_no);
         buffer_list.push_front(buf);
         lock.unlock();
 
@@ -117,7 +117,7 @@ task<block_buffer::buffer_ptr_t> block_buffer::get_node(device_id_t device_id, u
     // TODO: performance
     buffer_ptr_t ret_buf;
     for(auto& node: buffer_list) {
-        if(node->__get_derived().match(bdev, block_no)) {
+        if(node->match(bdev, block_no)) {
             ret_buf = node;
             break;
         }
@@ -126,10 +126,10 @@ task<block_buffer::buffer_ptr_t> block_buffer::get_node(device_id_t device_id, u
     buffer_list.push_front(buf);
 
     if(!ret_buf) {
-        buf->__get_derived().init(bdev, block_no);
+        buf->init(bdev, block_no);
         ret_buf = std::move(buf);
     } else {
-        buf->__get_derived().init(nullptr, 0);
+        buf->init(nullptr, 0);
     }
     
     
@@ -150,7 +150,7 @@ task<void> block_buffer::destroy(device_id_t device_id) {
         ++it;
 
         auto& node = *old_it;
-        if(node->__get_derived().match(device_id)) {
+        if(node->match(device_id)) {
             if (node.try_detach_weak()) {
                 // detach and put it into flush_list
                 flush_list.merge(buffer_list, old_it);
@@ -165,7 +165,7 @@ task<void> block_buffer::destroy(device_id_t device_id) {
 
     for(auto& node : flush_list) {
         co_await node->flush();
-        node->__get_derived().init(nullptr, 0);
+        node->init(nullptr, 0);
     }
 
     // add it back to buffer_list
