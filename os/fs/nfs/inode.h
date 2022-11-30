@@ -8,7 +8,7 @@ namespace nfs {
 
 class nfs_inode : public inode {
     public:
-    nfs_inode(nfs* _fs, uint64 _inode_number) : inode(_fs->get_device_id(), _inode_number), _fs(_fs) {}
+    nfs_inode(nfs* _fs, uint64 _inode_number) : inode(_fs->get_device_id(), _inode_number, _fs) {}
 
     virtual ~nfs_inode();
 
@@ -44,7 +44,7 @@ class nfs_inode : public inode {
     private:
 
     friend class nfs;
-    nfs* _fs = nullptr;
+    // nfs* _fs = nullptr;
     uint32 addrs[NUM_DIRECT_DATA]; // first few blocks index cache
     uint32 next_addr_block; // next block index cache
     // uint32 inode_block_index = -1; // inode block index cache

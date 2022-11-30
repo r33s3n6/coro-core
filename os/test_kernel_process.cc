@@ -140,18 +140,18 @@ uint64 random() {
 
 static uint64 random_store[1024];
 
-task<void> test_coherence(device_id_t test_device) {
+task<void> test_coherence(device_id_t test_device_id) {
     debug_core("test_coherence");
 
-    block_device* bdev = device::get<block_device>(test_device);
+    block_device* test_device = device::get<block_device>(test_device_id);
 
-    if (bdev->capacity() < 1024) {
-        debug_core("test_coherence: device %p: not enough space: %d", bdev, bdev->capacity());
+    if (test_device->capacity() < 1024) {
+        debug_core("test_coherence: device %p: not enough space: %d", test_device, test_device->capacity());
         co_return task_fail;
     }
 
     for(int i = 0; i < 1024; i++) {
-        auto buffer_ptr = *co_await kernel_block_buffer.get_node(test_device, i);
+        auto buffer_ptr = *co_await kernel_block_buffer.get(test_device, i);
         auto buffer_ref = *co_await buffer_ptr->get_ref();
         
         // try to get buffer for write
@@ -164,7 +164,7 @@ task<void> test_coherence(device_id_t test_device) {
     // check coherence 1
 
     for(int i = 0; i < 1024; i++) {
-        auto buffer_ptr = *co_await kernel_block_buffer.get_node(test_device, i);
+        auto buffer_ptr = *co_await kernel_block_buffer.get(test_device, i);
         auto buffer_ref = *co_await buffer_ptr->get_ref();
         
         // try to get buffer for read
@@ -177,12 +177,12 @@ task<void> test_coherence(device_id_t test_device) {
         }
     }
 
-    co_await kernel_block_buffer.destroy(test_device);
+    co_await kernel_block_buffer.destroy(test_device_id);
 
     // check coherence 2
 
     for(int i = 0; i < 1024; i++) {
-        auto buffer_ptr = *co_await kernel_block_buffer.get_node(test_device, i);
+        auto buffer_ptr = *co_await kernel_block_buffer.get(test_device, i);
         auto buffer_ref = *co_await buffer_ptr->get_ref();
         
         // try to get buffer for read
@@ -208,10 +208,12 @@ class test_bdev_coherence  {
     spinlock lock;
     bool _test_ok = false;
 
-    task<void> subtask_write(device_id_t test_device, uint32 block_no, uint64* random_store_ptr) {
+    task<void> subtask_write(device_id_t test_device_id, uint32 block_no, uint64* random_store_ptr) {
+        block_device* test_device = device::get<block_device>(test_device_id);
+
         uint64 random_store = random();
         {
-            auto buffer_ptr = *co_await kernel_block_buffer.get_node(test_device, block_no);
+            auto buffer_ptr = *co_await kernel_block_buffer.get(test_device, block_no);
             auto buffer_ref = *co_await buffer_ptr->get_ref();
             // try to get buffer for write
             uint8* buf = buffer_ref->data;
@@ -231,9 +233,10 @@ class test_bdev_coherence  {
         co_return task_ok;
     }
 
-    task<void> subtask_read(device_id_t test_device, uint32 block_no, uint64 random_store, int index, int pass) {
+    task<void> subtask_read(device_id_t test_device_id, uint32 block_no, uint64 random_store, int index, int pass) {
+        block_device* test_device = device::get<block_device>(test_device_id);
         {
-            auto buffer_ptr = *co_await kernel_block_buffer.get_node(test_device, block_no);
+            auto buffer_ptr = *co_await kernel_block_buffer.get(test_device, block_no);
             auto buffer_ref = *co_await buffer_ptr->get_ref();
             // try to get buffer for read
             const uint8* buf = buffer_ref->data;
@@ -257,20 +260,20 @@ class test_bdev_coherence  {
 
 public:
     test_bdev_coherence() {}
-    task<void> get_test(device_id_t test_device) {
+    task<void> get_test(device_id_t test_device_id) {
         debug_core("test_coherence");
 
-        block_device* bdev = device::get<block_device>(test_device);
+        block_device* test_device = device::get<block_device>(test_device_id);
 
-        if (bdev->capacity() < 1024) {
-            debug_core("test_coherence: device %p: not enough space: %d", bdev, bdev->capacity());
+        if (test_device->capacity() < 1024) {
+            debug_core("test_coherence: device %p: not enough space: %d", test_device, test_device->capacity());
             co_return task_fail;
         }
 
         _subtask_complete = 0;
 
         for(int i = 0; i < 1024; i++) {
-            kernel_task_queue.push(subtask_write(test_device, i, &random_store[i]));
+            kernel_task_queue.push(subtask_write(test_device_id, i, &random_store[i]));
         }
 
         lock.lock();
@@ -284,7 +287,7 @@ public:
         // check coherence 1
 
         for(int i = 0; i < 1024; i++) {
-            kernel_task_queue.push(subtask_read(test_device, i, random_store[i], i, 1));
+            kernel_task_queue.push(subtask_read(test_device_id, i, random_store[i], i, 1));
         }
 
         lock.lock();
@@ -296,11 +299,11 @@ public:
 
         _subtask_complete = 0;
 
-        co_await kernel_block_buffer.destroy(test_device);
+        co_await kernel_block_buffer.destroy(test_device_id);
 
         // check coherence 2
         for(int i = 0; i < 1024; i++) {
-            kernel_task_queue.push(subtask_read(test_device, i, random_store[i], i, 2));
+            kernel_task_queue.push(subtask_read(test_device_id, i, random_store[i], i, 2));
         }
 
         lock.lock();

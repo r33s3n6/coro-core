@@ -19,6 +19,8 @@
 
 #include <optional>
 
+#include <utils/buffer_manager.h>
+
 class block_buffer_node : public referenceable_buffer<block_buffer_node> {
     public: // TODO: private
     block_device* bdev;
@@ -50,7 +52,7 @@ class block_buffer_node : public referenceable_buffer<block_buffer_node> {
         return block_no;
     }
 
-    void init(block_device* bdev, uint64 block_no) {
+    void init(block_device* bdev = nullptr, uint64 block_no = 0) {
         this->bdev = bdev;
         this->block_no = block_no;
         this->mark_invalid();
@@ -69,27 +71,29 @@ class block_buffer_node : public referenceable_buffer<block_buffer_node> {
 
 // LRU cache of disk block contents.
 // we can use radix tree to speed up search
-class block_buffer {
-    constexpr static int32 MIN_BUFFER_COUNT = 2048;
-    constexpr static int32 MAX_BUFFER_COUNT = 10240;
-    
-public:
+// class block_buffer {
+//     constexpr static int32 MIN_BUFFER_COUNT = 2048;
+//     constexpr static int32 MAX_BUFFER_COUNT = 10240;
+//     
+// public:
+// 
+//     using buffer_t = block_buffer_node;
+//     using buffer_ref_t = reference_guard<buffer_t>;
+//     using buffer_ptr_t = shared_ptr<buffer_t>;
+// 
+//     list<buffer_ptr_t> buffer_list;
+//     list<buffer_ptr_t> flush_list;
+//     wait_queue flush_queue;
+// 
+//     spinlock lock {"block_buffer.lock"};
+// 
+//     block_buffer() {}
+//     task<buffer_ptr_t> get(bdev_t device_id, uint64 block_no);
+//     task<void> destroy(device_id_t device_id);
+// 
+// };
 
-    using buffer_t = block_buffer_node;
-    using buffer_ref_t = reference_guard<buffer_t>;
-    using buffer_ptr_t = shared_ptr<buffer_t>;
+using block_buffer_t = buffer_manager<block_buffer_node>;
 
-    list<buffer_ptr_t> buffer_list;
-    list<buffer_ptr_t> flush_list;
-    wait_queue flush_queue;
-
-    spinlock lock {"block_buffer.lock"};
-
-    block_buffer() {}
-    task<buffer_ptr_t> get_node(device_id_t device_id, uint64 block_no);
-    task<void> destroy(device_id_t device_id);
-
-};
-
-extern block_buffer kernel_block_buffer;
+extern block_buffer_t kernel_block_buffer;
 #endif // BUF_H

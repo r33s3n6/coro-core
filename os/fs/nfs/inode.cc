@@ -19,7 +19,7 @@ nfs_inode::~nfs_inode(){
 }
 
 task<void> nfs_inode::put() {
-    co_await _fs->put_inode(this);
+    co_await ((nfs*)_fs)->put_inode(this);
     co_return task_ok;
 }
 
@@ -31,6 +31,8 @@ template <bool _write>
 task<void> nfs_inode::direct_data_block_rw(
     uint32 direct_offset, uint32 data_block_offset,
     std::conditional_t<_write, const uint8 *, uint8*> buf, uint32 size) { 
+    
+    auto bdev = device::get<block_device>(device_id);
 
     kernel_assert(direct_offset < NUM_DIRECT_DATA, "direct_offset out of range");
     kernel_assert(data_block_offset + size <= block_device::BLOCK_SIZE, "size out of range");
@@ -45,7 +47,7 @@ task<void> nfs_inode::direct_data_block_rw(
         if constexpr (_write){
             
             // allocate a new block
-            data_block_index = *co_await _fs->alloc_block();
+            data_block_index = *co_await  ((nfs*)_fs)->alloc_block();
             addrs[direct_offset] = data_block_index;
             metadata_dirty = true;
             clear = true;
@@ -56,7 +58,7 @@ task<void> nfs_inode::direct_data_block_rw(
         }
     }
 
-    auto block_buf_ptr = *co_await kernel_block_buffer.get_node(device_id, data_block_index);
+    auto block_buf_ptr = *co_await kernel_block_buffer.get(bdev, data_block_index);
     auto block_buf_ref = *co_await block_buf_ptr->get_ref();
     auto block_buf = block_buf_ref->data;
 
@@ -79,6 +81,8 @@ task<void> nfs_inode::data_block_rw(
     uint32 addr_block_index, uint32 addr_block_offset, uint32 data_block_offset,
     std::conditional_t<_write, const uint8 *, uint8*> buf, uint32 size) { 
     
+    auto bdev = device::get<block_device>(device_id);
+    
     kernel_assert(addr_block_offset < NUM_ADDRS, "addr_block_offset out of range");
     kernel_assert(data_block_offset + size <= block_device::BLOCK_SIZE, "size out of range");
 
@@ -87,7 +91,7 @@ task<void> nfs_inode::data_block_rw(
 
     {
         // read addr block
-        auto addr_block_buf_ptr = *co_await kernel_block_buffer.get_node(device_id, addr_block_index);
+        auto addr_block_buf_ptr = *co_await kernel_block_buffer.get(bdev, addr_block_index);
         auto addr_block_buf_ref = *co_await addr_block_buf_ptr->get_ref();
         auto addr_block_buf = addr_block_buf_ref->data;
 
@@ -98,7 +102,7 @@ task<void> nfs_inode::data_block_rw(
         if(data_block_index == (uint32)-1){
             if constexpr (_write){
                 // allocate a new block
-                data_block_index = *co_await _fs->alloc_block();
+                data_block_index = *co_await  ((nfs*)_fs)->alloc_block();
                 _addr_block->addrs[addr_block_offset] = data_block_index;
                 addr_block_buf_ref->mark_dirty();
                 clear = true;
@@ -110,7 +114,7 @@ task<void> nfs_inode::data_block_rw(
         }
     }
 
-    auto block_buf_ptr = *co_await kernel_block_buffer.get_node(device_id, data_block_index);
+    auto block_buf_ptr = *co_await kernel_block_buffer.get(bdev, data_block_index);
     auto block_buf_ref = *co_await block_buf_ptr->get_ref();
     auto block_buf = block_buf_ref->data;
 
@@ -134,6 +138,7 @@ task<void> nfs_inode::data_block_rw(
 
 template <bool _write>
 task<int64> nfs_inode::data_rw(std::conditional_t<_write, const uint8 *, uint8*> buf, uint64 offset, uint64 size) {
+    auto bdev = device::get<block_device>(device_id);
 
     int64 rw_size = 0;
     uint32 block_rw_size = 0;
@@ -172,11 +177,11 @@ task<int64> nfs_inode::data_rw(std::conditional_t<_write, const uint8 *, uint8*>
     if (next_addr_block == (uint32)-1) {
         if constexpr (_write) {
             // allocate a new block
-            next_addr_block = *co_await _fs->alloc_block();
+            next_addr_block = *co_await  ((nfs*)_fs)->alloc_block();
             metadata_dirty = true;
 
             // init next_addr_block with -1
-            auto next_addr_block_buf_ptr = *co_await kernel_block_buffer.get_node(device_id, next_addr_block);
+            auto next_addr_block_buf_ptr = *co_await kernel_block_buffer.get(bdev, next_addr_block);
             auto next_addr_block_buf_ref = *co_await next_addr_block_buf_ptr->get_ref();
             auto next_addr_block_buf = next_addr_block_buf_ref->data;
 
@@ -269,6 +274,7 @@ task<const nfs_inode::metadata_t*> nfs_inode::get_metadata() {
 }
 
 task<int32> nfs_inode::truncate(int64 size) {
+    auto bdev = device::get<block_device>(device_id);
     // resize inode
     
     // TODO: only support truncate to 0 now
@@ -286,7 +292,7 @@ task<int32> nfs_inode::truncate(int64 size) {
     // free all direct data blocks
     for (uint32 i = 0; i < NUM_DIRECT_DATA; i++) {
         if (addrs[i] != (uint32)-1) {
-            co_await _fs->free_block(addrs[i]);
+            co_await ((nfs*)_fs)->free_block(addrs[i]);
             addrs[i] = (uint32)-1;
         }
     }
@@ -299,20 +305,20 @@ task<int32> nfs_inode::truncate(int64 size) {
     while (addr_block_index != (uint32)-1) {
         uint32 next_addr_block_index;
         {
-            auto addr_block_buf_ptr = *co_await kernel_block_buffer.get_node(device_id, addr_block_index);
+            auto addr_block_buf_ptr = *co_await kernel_block_buffer.get(bdev, addr_block_index);
             auto addr_block_buf_ref = *co_await addr_block_buf_ptr->get_ref();
 
             addr_block* _addr_block = (addr_block*)(addr_block_buf_ref->data);
             for (uint32 i = 0; i < NUM_ADDRS; i++) {
                 data_block_index = _addr_block->addrs[i];
                 if (data_block_index != (uint32)-1) {
-                    co_await _fs->free_block(data_block_index);
+                    co_await  ((nfs*)_fs)->free_block(data_block_index);
                 }
             }
             next_addr_block_index = _addr_block->next_addr_block;
         }
 
-        co_await _fs->free_block(addr_block_index);
+        co_await  ((nfs*)_fs)->free_block(addr_block_index);
         addr_block_index = next_addr_block_index;
     }
     
@@ -380,7 +386,7 @@ task<int32> nfs_inode::create(dentry* new_dentry) {
     }
     
 
-    auto new_inode = *co_await _fs->alloc_inode();
+    auto new_inode = *co_await  ((nfs*)_fs)->alloc_inode();
 
     co_await new_inode->rw_lock.lock();
     co_await new_inode->load();
@@ -392,7 +398,7 @@ task<int32> nfs_inode::create(dentry* new_dentry) {
 
     int32 ret = *co_await __link(new_dentry, new_inode);
 
-    co_await _fs->put_inode(new_inode);
+    co_await  ((nfs*)_fs)->put_inode(new_inode);
 
     co_return ret;
 }
@@ -425,9 +431,9 @@ task<int32> nfs_inode::lookup(dentry* new_dentry) {
 
         if (strcmp(_dirent.name, new_dentry->name.data()) == 0) {
             // found
-            nfs_inode* new_inode = *co_await _fs->get_inode(_dirent.inode_number);
+            nfs_inode* new_inode = *co_await  ((nfs*)_fs)->get_inode(_dirent.inode_number);
             co_await new_inode->set_dentry(new_dentry);
-            co_await _fs->put_inode(new_inode);
+            co_await  ((nfs*)_fs)->put_inode(new_inode);
             co_return 0;
         }
 
@@ -458,11 +464,11 @@ task<dentry*> nfs_inode::read_dir() {
             continue;
         }
 
-        nfs_inode* new_inode = *co_await _fs->get_inode(_dirent.inode_number);
+        nfs_inode* new_inode = *co_await  ((nfs*)_fs)->get_inode(_dirent.inode_number);
 
         dentry* d = *co_await kernel_dentry_cache.get_or_create(this_dentry, _dirent.name, new_inode);
 
-        co_await _fs->put_inode(new_inode);
+        co_await  ((nfs*)_fs)->put_inode(new_inode);
 
         
 
@@ -555,7 +561,7 @@ task<int32> nfs_inode::mkdir(dentry* new_dentry) {
     }
     
 
-    auto new_inode = *co_await _fs->alloc_inode();
+    auto new_inode = *co_await ((nfs*)_fs)->alloc_inode();
 
     co_await new_inode->rw_lock.lock();
     co_await new_inode->load();
@@ -569,7 +575,7 @@ task<int32> nfs_inode::mkdir(dentry* new_dentry) {
 
     int32 ret = *co_await __link(new_dentry, new_inode);
 
-    co_await _fs->put_inode(new_inode);
+    co_await ((nfs*)_fs)->put_inode(new_inode);
 
     co_return ret;
 }
@@ -603,9 +609,9 @@ task<int32> nfs_inode::load() {
     dinode* disk_inode;
     if (inode_number == INODE_TABLE_NUMBER) {
         // inode table, we read it from superblock
-        disk_inode = &_fs->sb.inode_table;
+        disk_inode = &((nfs*)_fs)->sb.inode_table;
     } else {
-        co_await _fs->inode_table->read(&dinode_buf, inode_number * sizeof(dinode), sizeof(dinode));
+        co_await ((nfs*)_fs)->inode_table->read(&dinode_buf, inode_number * sizeof(dinode), sizeof(dinode));
         disk_inode = &dinode_buf;
     }
 
@@ -641,7 +647,7 @@ task<int32> nfs_inode::flush() {
 
     if (inode_number == INODE_TABLE_NUMBER) {
         // inode table, we write it to superblock
-        disk_inode = &_fs->sb.inode_table;
+        disk_inode = &((nfs*)_fs)->sb.inode_table;
     } else {
         disk_inode = &dinode_buf;
     }
@@ -660,9 +666,9 @@ task<int32> nfs_inode::flush() {
 
     if (inode_number == INODE_TABLE_NUMBER) {
         // inode table, we write it to superblock
-        _fs->sb_dirty = true;
+        ((nfs*)_fs)->sb_dirty = true;
     } else {
-        co_await _fs->inode_table->write(disk_inode, inode_number * sizeof(dinode), sizeof(dinode));
+        co_await ((nfs*)_fs)->inode_table->write(disk_inode, inode_number * sizeof(dinode), sizeof(dinode));
     }
 
 
@@ -674,14 +680,16 @@ task<int32> nfs_inode::flush() {
 // create intermediate addr blocks if necessary
 task<void> nfs_inode::get_block_index(uint32 start_addr_block, uint64 offset,
          uint32* addr_block_index, uint32* addr_block_offset, uint32* data_block_index, uint32* data_block_offset) {
+    
+    auto bdev = device::get<block_device>(device_id);
 
     uint32 _addr_block_index = start_addr_block;
 
-    block_buffer::buffer_ptr_t buf_ptr;
+    block_buffer_t::buffer_ptr_t buf_ptr;
 
     // find final index block
     while (true) {
-        buf_ptr = *co_await kernel_block_buffer.get_node(device_id, _addr_block_index);
+        buf_ptr = *co_await kernel_block_buffer.get(bdev, _addr_block_index);
 
         if (offset < ADDR_BLOCK_DATA_SIZE) {
             break;
@@ -704,9 +712,9 @@ task<void> nfs_inode::get_block_index(uint32 start_addr_block, uint64 offset,
         // buf_ptr hold the last addr block
         
 
-        uint32 new_addr_block_index = *co_await _fs->alloc_block();
+        uint32 new_addr_block_index = *co_await ((nfs*)_fs)->alloc_block();
         // debugf("nfs_inode::get_block_index: alloc new addr block %d", new_addr_block_index);
-        auto new_buf_ptr = *co_await kernel_block_buffer.get_node(device_id, new_addr_block_index);
+        auto new_buf_ptr = *co_await kernel_block_buffer.get(bdev, new_addr_block_index);
 
         {
             auto new_buf_ref = *co_await new_buf_ptr->get_ref();

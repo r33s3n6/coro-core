@@ -18,6 +18,7 @@
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 
+class filesystem;
 
 // coroutine inode
 class inode : noncopyable {
@@ -43,7 +44,7 @@ class inode : noncopyable {
     };
 
     inode(){}
-    inode(device_id_t _device_id, uint64 _inode_number) : device_id(_device_id), inode_number(_inode_number) {}
+    inode(device_id_t _device_id, uint64 _inode_number, filesystem* _fs) : device_id(_device_id), inode_number(_inode_number), _fs(_fs) {}
     virtual ~inode() {}
     
     // inode operations
@@ -109,6 +110,7 @@ public:
     int32 reference_count = 0;
     device_id_t device_id;
     uint32 inode_number;
+    filesystem* _fs = nullptr;
 
     // metadata
 protected:

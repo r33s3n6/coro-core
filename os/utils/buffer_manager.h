@@ -32,7 +32,7 @@ public:
         do {
             in_flush = false;
             for (auto& node : flush_list) {
-                if (node->match(std::forward<Args>(match_args)...)) {
+                if (node->match(match_args...)) {
 
                     in_flush = true;
                     // debugf("block_buffer: wait flush %d", block_no);
@@ -45,7 +45,7 @@ public:
 
         for(auto it = buffer_list.begin(); it != buffer_list.end(); ++it) {
             auto& node = *it;
-            if(node->match(std::forward<Args>(match_args)...)) {
+            if(node->match(match_args...)) {
                 // put node at the front of the list
                 buffer_list.move_to_front(it);
                 lock.unlock();
@@ -79,7 +79,7 @@ public:
             }
 
             // create a new node
-            buf = make_shared<block_buffer_node>();
+            buf = make_shared<buffer_t>();
 
         } else {
             buf = *unused;
@@ -88,7 +88,7 @@ public:
 
         if(!buf->is_dirty()) {
 
-            buf->init(std::forward<Args>(match_args)...);
+            buf->init(match_args...);
             buffer_list.push_front(buf);
             lock.unlock();
 
@@ -112,14 +112,14 @@ public:
         // else we just init it to null
         buffer_ptr_t ret_buf;
         for(auto& node: buffer_list) {
-            if(node->match(std::forward<Args>(match_args)...)) {
+            if(node->match(match_args...)) {
                 ret_buf = node;
                 break;
             }
         }
 
         if(!ret_buf) {
-            buf->init(std::forward<Args>(match_args)...);
+            buf->init(match_args...);
             buffer_list.push_front(buf);
             ret_buf = std::move(buf);
         } else {
@@ -147,7 +147,7 @@ public:
             ++it;
 
             auto& node = *old_it;
-            if(node->match(std::forward<Args>(match_args)...)) {
+            if(node->match(match_args...)) {
                 if (node.try_detach_weak()) {
                     // detach and put it into flush_list
                     flush_list.merge(buffer_list, old_it);
@@ -171,7 +171,7 @@ public:
         lock.unlock();
 
         if (failed_count) {
-            warnf("block_buffer: destroy failed: %d nodes are still in use", failed_count);
+            // warnf("block_buffer: destroy failed: %d nodes are still in use", failed_count);
             co_return task_fail;
         }
         co_return task_ok;
