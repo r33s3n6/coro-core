@@ -216,14 +216,23 @@ class simple_file : public file {
        this->_inode = _inode;
     }
 
+    ~simple_file() {
+        if (opened) {
+            panic("simple_file is not closed");
+        }
+    }
+
     task<int32> open() override {
         _inode->get();
         offset = 0;
+        opened = true;
         co_return 0;
     }
 
     task<int32> close() override {
         co_await _inode->put();
+        _inode = nullptr;
+        opened = false;
         co_return 0;
     }
 
@@ -270,6 +279,8 @@ class simple_file : public file {
         co_return offset;
     }
 
+    private:
+    bool opened = false;
 
 };
 

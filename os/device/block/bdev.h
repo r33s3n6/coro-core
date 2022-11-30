@@ -24,8 +24,7 @@ public:
     protected:
     
     const char* device_name;
-    // wait_queue request_queue;
-    // sleepable* requestor = nullptr;
+
 };
 
 #endif

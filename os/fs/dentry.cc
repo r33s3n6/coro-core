@@ -9,7 +9,7 @@ dentry_cache kernel_dentry_cache;
 
 task<void> dentry::set_inode(inode* inode) {
     if (_inode) {
-        // _inode->set_dentry(nullptr);
+        debugf("dentry::set_inode: %s: put inode %d", name.data(), _inode->inode_number);
         co_await _inode->put();
     }
 
@@ -18,6 +18,7 @@ task<void> dentry::set_inode(inode* inode) {
     lock.unlock();
 
     if (inode) {
+        debugf("dentry::set_inode: %s: inode %d", name.data(), inode->inode_number);
         inode->get();
     }
 
@@ -77,7 +78,7 @@ void dentry_cache::put(dentry* dentry) {
     dentry->lock.unlock();
 }
 
-task<dentry*> dentry_cache::get(dentry* parent, const quick_string_ref& name_ref) {
+task<dentry*> dentry_cache::lookup(dentry* parent, const quick_string_ref& name_ref) {
     uint32 hash = name_ref.hash();
 
     dentry_cache_entry& entry = hash_table[hash % HASH_TABLE_SIZE];
@@ -95,6 +96,15 @@ task<dentry*> dentry_cache::get(dentry* parent, const quick_string_ref& name_ref
     }
     entry.lock.unlock();
 
+    co_return nullptr;
+}
+
+task<dentry*> dentry_cache::get(dentry* parent, const quick_string_ref& name_ref) {
+    dentry* d = *co_await lookup(parent, name_ref);
+    if (d) {
+        co_return d;
+    }
+
     dentry* new_dentry = *co_await __get_free_dentry(name_ref, parent);
 
 
@@ -109,6 +119,25 @@ task<dentry*> dentry_cache::get(dentry* parent, const char* name) {
     quick_string_ref name_ref(name);
     
     co_return *co_await get(parent, name_ref);
+}
+
+task<dentry*> dentry_cache::get_or_create(dentry* parent, const char* name, inode* inode) {
+    quick_string_ref name_ref(name);
+
+    dentry* d = *co_await lookup(parent, name_ref);
+    if (d) {
+        co_return d;
+    }
+
+    dentry* new_dentry = *co_await __get_free_dentry(name_ref, parent);
+
+    new_dentry->parent = parent;
+
+    if (inode) {
+        co_await inode->set_dentry(new_dentry);
+    }
+    
+    co_return new_dentry;
 }
 
 task<dentry*> dentry_cache::create(dentry* parent, const char* name, inode* inode) {
@@ -141,21 +170,25 @@ task<dentry*> dentry_cache::get_at(dentry* current, const char* path) {
         }
 
         if (path == start) {
+            if (*path == '/') {
+                path++;
+            }
             // empty path component
             continue;
         }
 
-        if (path-start == 1 && *start == '.') {
+        if (path - start == 1 && *start == '.') {
             // current directory
             continue;
         }
 
-        if (path-start == 2 && *start == '.' && *(start+1) == '.') {
+        if (path - start == 2 && *start == '.' && *(start+1) == '.') {
             // parent directory
             if (current->parent == nullptr) {
                 // already at root
                 continue;
             }
+            debugf("current: '%s' %p, parent: '%s' %p", current->name.data(), current, current->parent->name.data(), current->parent);
             current = current->parent;
             continue;
         }

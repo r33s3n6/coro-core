@@ -14,9 +14,10 @@ task<dentry*> inode::get_dentry() {
 }
 
 task<void> inode::set_dentry(dentry* _dentry) {
-    if(this_dentry) {
-        co_await this_dentry->set_inode(nullptr);
-    }
+    // TODO: maybe there's no need to set_inode nullptr
+    // if(this_dentry) {
+    //     co_await this_dentry->set_inode(nullptr);
+    // }
     this_dentry = _dentry;
     if (this_dentry) {
         co_await this_dentry->set_inode(this);

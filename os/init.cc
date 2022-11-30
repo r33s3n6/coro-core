@@ -63,6 +63,7 @@ extern void print_something();
 extern void test_bind_core(void* arg);
 extern void test_disk_rw(void* arg);
 extern void test_nfs(void* arg);
+extern void test_nfs2(void* arg);
 
 
 // test code
@@ -99,9 +100,12 @@ void init(){
     shared_ptr<process> test_nfs_proc = make_shared<kernel_process>(kernel_process_queue.alloc_pid(), test_nfs);
     test_nfs_proc->set_name("test_nfs");
 
+    shared_ptr<process> test_nfs2_proc = make_shared<kernel_process>(kernel_process_queue.alloc_pid(), test_nfs2);
+    test_nfs_proc->set_name("test_nfs2");
+
     // kernel_process_queue.push(test_disk_rw_proc);
 
-    kernel_process_queue.push(test_nfs_proc);
+    kernel_process_queue.push(test_nfs2_proc);
 
     
 

@@ -69,8 +69,12 @@ class dentry_cache {
     void put(dentry* dentry);
     task<dentry*> get(dentry* parent, const quick_string_ref& name_ref);
     task<dentry*> get(dentry* parent, const char* name);
+
     task<dentry*> get_at(dentry* current, const char* path);
+    task<dentry*> get_or_create(dentry* parent, const char* name, inode* inode);
     task<dentry*> create(dentry* parent, const char* name, inode* inode);
+    task<dentry*> lookup(dentry* parent, const quick_string_ref& name_ref);
+
     task<void> destroy();
     
     private:

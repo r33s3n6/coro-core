@@ -346,6 +346,7 @@ task<int32> nfs_inode::__link(dentry* new_dentry, nfs_inode* _inode) {
 
     _inode->rw_lock.unlock();
 
+    //co_await _fs->put_inode(_inode);
 
     // find empty slot
     while (true) {
@@ -362,6 +363,8 @@ task<int32> nfs_inode::__link(dentry* new_dentry, nfs_inode* _inode) {
         if (temp_dirent.inode_number == 0) {
             break;
         }
+
+        offset += sizeof(dirent);
     }
 
     co_await write(&new_dirent, offset, sizeof(dirent));
@@ -457,11 +460,17 @@ task<dentry*> nfs_inode::read_dir() {
 
         nfs_inode* new_inode = *co_await _fs->get_inode(_dirent.inode_number);
 
-        dentry* new_dentry = *co_await kernel_dentry_cache.create(this_dentry, _dirent.name, new_inode);
+        dentry* d = *co_await kernel_dentry_cache.get_or_create(this_dentry, _dirent.name, new_inode);
 
         co_await _fs->put_inode(new_inode);
 
-        co_yield new_dentry;
+        
+
+        // dentry* new_dentry = *co_await kernel_dentry_cache.create(this_dentry, _dirent.name, new_inode);
+// 
+        // co_await _fs->put_inode(new_inode);
+
+        co_yield d;
 
     }
 }
@@ -551,12 +560,18 @@ task<int32> nfs_inode::mkdir(dentry* new_dentry) {
     co_await new_inode->rw_lock.lock();
     co_await new_inode->load();
 
+
+
     new_inode->metadata.type = inode::ITYPE_DIR;
     new_inode->metadata_dirty = true;
 
     new_inode->rw_lock.unlock();
 
-    co_return *co_await __link(new_dentry, new_inode);
+    int32 ret = *co_await __link(new_dentry, new_inode);
+
+    co_await _fs->put_inode(new_inode);
+
+    co_return ret;
 }
 
 // 
