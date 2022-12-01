@@ -8,7 +8,7 @@ namespace nfs {
 
 class nfs_inode : public inode {
     public:
-    nfs_inode(nfs* _fs, uint64 _inode_number) : inode(_fs->get_device_id(), _inode_number, _fs) {}
+    nfs_inode(nfs* _fs = nullptr, uint64 _inode_number = 0) : inode(_fs, _inode_number) {}
 
     virtual ~nfs_inode();
 
@@ -20,35 +20,35 @@ class nfs_inode : public inode {
     virtual task<const metadata_t*> get_metadata() override;
     
     // we assume current inode is a directory
-    virtual task<int32> create(dentry* new_dentry) override;
-    virtual task<int32> lookup(dentry* new_dentry) override;
+    virtual task<int32> create(shared_ptr<dentry> new_dentry) override;
+    virtual task<int32> lookup(shared_ptr<dentry> new_dentry) override;
     // generator
-    virtual task<dentry*> read_dir() override;
+    virtual task<shared_ptr<dentry>> read_dir() override;
 
-    virtual task<int32> link(dentry* old_dentry, dentry* new_dentry) override;
-    virtual task<int32> symlink(dentry* old_dentry, dentry* new_dentry) override;
-    virtual task<int32> unlink(dentry* old_dentry ) override;
-    virtual task<int32> mkdir(dentry* new_dentry) override;
-    virtual task<int32> rmdir(dentry* old_dentry) override;
+    virtual task<int32> link(shared_ptr<dentry> old_dentry, shared_ptr<dentry> new_dentry) override;
+    virtual task<int32> symlink(shared_ptr<dentry> old_dentry, shared_ptr<dentry> new_dentry) override;
+    virtual task<int32> unlink(shared_ptr<dentry> old_dentry ) override;
+    virtual task<int32> mkdir(shared_ptr<dentry> new_dentry) override;
+    virtual task<int32> rmdir(shared_ptr<dentry> old_dentry) override;
 
     // sync from disk to memory
-    virtual task<int32> load() override;
-    virtual task<int32> flush() override;
+    virtual task<int32> __load() override;
+    virtual task<int32> __flush() override;
     
-    virtual task<void> put() override;
+    // virtual task<void> put() override;
 
-    void init();
+    // void init();
+    void init_data();
     void print();
 
 
     private:
 
     friend class nfs;
-    // nfs* _fs = nullptr;
+
     uint32 addrs[NUM_DIRECT_DATA]; // first few blocks index cache
     uint32 next_addr_block; // next block index cache
-    // uint32 inode_block_index = -1; // inode block index cache
-    // uint32 inode_offset = -1; // inode offset cache
+
 
     public:
     static uint32 cache_hit;
@@ -78,7 +78,7 @@ class nfs_inode : public inode {
     template <bool _write>
     task<int64> data_rw(std::conditional_t<_write, const uint8 *, uint8*> buf, uint64 offset, uint64 size);
 
-    task<int32> __link(dentry* new_dentry, nfs_inode* _inode);
+    task<int32> __link(shared_ptr<dentry> new_dentry, shared_ptr<nfs_inode> _inode);
 };
 
 }

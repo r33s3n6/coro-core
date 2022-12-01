@@ -51,6 +51,9 @@ struct ref_count_t {
 };
 
 template <typename T>
+class weak_ptr;
+
+template <typename T>
 class shared_ptr {
    private: 
     T* ptr = nullptr;
@@ -58,7 +61,8 @@ class shared_ptr {
 
    public:
 
-    shared_ptr(T* ptr = nullptr) { reset(ptr); }
+    constexpr explicit shared_ptr(T* ptr) { reset(ptr); }
+    constexpr shared_ptr(std::nullptr_t p=nullptr) { reset(p); }
     
     ~shared_ptr() {
         __dec_ref();
@@ -100,6 +104,14 @@ class shared_ptr {
         __reset(other.ptr, other.ref_count);
     }
 
+    template <typename other_type,
+              typename = typename std::enable_if_t<
+                  std::is_convertible_v<other_type*, T*>>>
+    operator shared_ptr<other_type>() noexcept {
+
+        return {(other_type*)ptr, ref_count};
+    }
+
 
     constexpr shared_ptr& operator=(const shared_ptr& other) noexcept {
 
@@ -115,6 +127,8 @@ class shared_ptr {
     }
 
 
+
+
     template <typename other_type,
               typename = typename std::enable_if_t<
                   std::is_convertible_v<other_type*, T*>>>
@@ -124,10 +138,12 @@ class shared_ptr {
         return *this;
     }
 
+    weak_ptr<T> get_weak() const {
+        return weak_ptr<T>(ptr, ref_count);
+    }
 
 
-
-    void reset(T* new_ptr) {
+    void reset(T* new_ptr = nullptr) {
         __dec_ref();
 
         ptr = new_ptr;
@@ -214,8 +230,16 @@ class weak_ptr {
     ref_count_t* ref_count = nullptr;
 
    public:
+    constexpr weak_ptr() noexcept = default;
 
-    weak_ptr(T* ptr = nullptr) { reset(ptr); }
+    constexpr weak_ptr(shared_ptr<T>& other) {
+        __reset(other.ptr, other.ref_count);
+    }
+
+    constexpr weak_ptr(T* ptr, ref_count_t* ref_count) {
+        __reset(ptr, ref_count);
+    }
+    // constexpr weak_ptr(T* ptr = nullptr) { reset(ptr); }
     
     ~weak_ptr() {
         __dec_ref();

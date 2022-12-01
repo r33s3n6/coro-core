@@ -370,14 +370,15 @@ task<void> test_nfs_read(device_id_t device_id, uint32 times) {
     test_fs.print();
 
     // find file using path
-    dentry* file_dentry = *co_await kernel_dentry_cache.get_at(nullptr, "/test_file");
-    inode* file_inode = file_dentry->get_inode();
-    file_inode->get();
+    shared_ptr<dentry> file_dentry = *co_await kernel_dentry_cache.get_at(nullptr, "/test_file");
+    shared_ptr<inode> file_inode = file_dentry->get_inode();
+
     kernel_dentry_cache.put(file_dentry);
 
     // test file rw
-    simple_file _file((inode*)file_inode);
-    co_await file_inode->put();
+    simple_file _file(file_inode);
+    file_inode.reset();
+
     co_await _file.open();
     int64 file_size = *co_await _file.llseek(0, file::whence_t::END);
 
@@ -411,9 +412,10 @@ task<void> test_nfs_read(device_id_t device_id, uint32 times) {
 
     // delete file
     file_dentry = *co_await kernel_dentry_cache.get_at(nullptr, "/test_file");
-    dentry* parent_dentry = file_dentry->parent;
-    co_await parent_dentry->get_inode()->unlink(file_dentry);
+    shared_ptr<dentry> parent_dentry = file_dentry->parent;
+    co_await (*co_await parent_dentry->get_inode()->get_ref())->unlink(file_dentry);
     kernel_dentry_cache.put(file_dentry);
+    parent_dentry.reset();
 
     co_await test_fs.unmount();
     debugf("test_nfs_read: ok");
@@ -436,52 +438,71 @@ task<void> test_make_nfs(device_id_t device_id, uint32 times) {
     test_fs.print();
 
     // get root and check metadata
-    inode* root_inode = *co_await test_fs.get_root();
-    kernel_assert(root_inode, "test_make_nfs: root_inode is null");
-    auto metadata1 = *co_await root_inode->get_metadata();
-    kernel_assert(metadata1->type == inode::ITYPE_DIR, "metadata.type != T_DIR");
+    shared_ptr<nfs::nfs_inode> root_inode = *co_await test_fs.get_root();
+    kernel_assert(root_inode, "test_nfs_coro: root_inode is null");
+    debugf("test_nfs_coro: get root done: %d", root_inode->inode_number);
+    {
+        reference_guard<nfs::nfs_inode> root_inode_ref = *co_await root_inode->get_ref();
+        debugf("test_nfs_coro: root_inode: %d", root_inode_ref->inode_number);
+        auto metadata1 = *co_await root_inode_ref->get_metadata();
+        kernel_assert(metadata1->type == inode::ITYPE_DIR, "metadata.type != T_DIR");
+        root_inode_ref->print();
+    }
 
-    dentry* root_dentry = *co_await root_inode->get_dentry();
-    kernel_assert(root_dentry, "test_make_nfs: root_dentry is null");
+
+    shared_ptr<dentry> root_dentry = root_inode->get_dentry().lock();
+    kernel_assert(root_dentry, "test_nfs_coro: root_dentry is null");
 
     // create simple file
-    dentry* file_dentry = *co_await kernel_dentry_cache.create(root_dentry, "test_file", nullptr);
-    kernel_assert(file_dentry, "test_make_nfs: file_dentry is null");
-    debugf("test_make_nfs: create file_dentry done");
-    co_await root_inode->create(file_dentry);
-    debugf("test_make_nfs: create file done");
-    inode* file_inode = file_dentry->get_inode();
-    kernel_assert(file_inode, "test_make_nfs: file_inode is null");
-    file_inode->get();
-    kernel_dentry_cache.put(file_dentry);
-
-    debugf("file_inode ref: %d", file_inode->get_ref());
-
-    int64 write_size = *co_await file_inode->write("hello world", 0, 12);
-    if (write_size != 12) {
-        warnf("nfs: write failed:%d", write_size);
-        co_return task_fail;
+    shared_ptr<dentry> file_dentry = *co_await kernel_dentry_cache.create(root_dentry, "test_file", nullptr);
+    kernel_assert(file_dentry, "test_nfs_coro: file_dentry is null");
+    debugf("test_nfs_coro: create file_dentry done");
+    
+    {
+        debugf("test_nfs_coro: create file...");
+        reference_guard<nfs::nfs_inode> root_inode_ref = *co_await root_inode->get_ref();
+        root_inode_ref->print();
+        co_await root_inode_ref->create(file_dentry);
+        debugf("test_nfs_coro: create file done");
     }
-    debugf("nfs: write file inode %d done", file_inode->inode_number);
-    co_await file_inode->put();
 
-    debugf("file_inode ref: %d", file_inode->get_ref());
+    root_inode.reset();
+
+    shared_ptr<inode> file_inode = file_dentry->get_inode();
+    kernel_assert(file_inode, "test_nfs_coro: file_inode is null");
+
+    {
+        auto file_inode_ref = *co_await file_inode->get_ref();
+        kernel_dentry_cache.put(file_dentry);
+
+
+        int64 write_size = *co_await file_inode_ref->write("hello world", 0, 12);
+        if (write_size != 12) {
+            warnf("nfs: write failed:%d", write_size);
+            co_return task_fail;
+        }
+        debugf("nfs: write file inode %d done", file_inode_ref->inode_number);
+    }
+
 
     // find file using path
-    dentry* file_dentry2 = *co_await kernel_dentry_cache.get_at(nullptr, "/test_file");
+    shared_ptr<dentry> file_dentry2 = *co_await kernel_dentry_cache.get_at(nullptr, "/test_file");
     file_inode = file_dentry2->get_inode();
-    file_inode->get();
-    kernel_dentry_cache.put(file_dentry2);
+    {
+        auto file_inode_ref = *co_await file_inode->get_ref();
+        kernel_dentry_cache.put(file_dentry2);
 
-    debugf("file_inode ref: %d", file_inode->get_ref());
 
-    auto metadata2 = *co_await file_inode->get_metadata();
-    kernel_assert(metadata2->type == inode::ITYPE_FILE, "metadata.type != T_FILE");
+        auto metadata2 = *co_await file_inode_ref->get_metadata();
+        kernel_assert(metadata2->type == inode::ITYPE_FILE, "metadata.type != T_FILE");
+    }
+
 
     // test file rw
-    simple_file _file((inode*)file_inode);
+    simple_file _file(file_inode);
+    file_inode.reset();
+
     co_await _file.open();
-    co_await file_inode->put();
 
     int64 file_size = *co_await _file.llseek(0, file::whence_t::END);
 
@@ -529,14 +550,6 @@ task<void> test_make_nfs(device_id_t device_id, uint32 times) {
 
     co_await _file.close();
 
-    // file_inode->print();
-    // ((nfs::nfs_inode*)root)->print();
-// 
-    // co_await test_fs.put_inode(file_inode);
-
-    // print superblock
-
-    //test_fs.print();
     co_await test_fs.unmount();
 
     co_await test_nfs_read(device_id, times);
@@ -558,7 +571,7 @@ task<void> test_make_nfs2(device_id_t device_id) {
 
     co_await test_fs.mount(device_id);
     test_fs.print();
-    inode* root = *co_await test_fs.get_root();
+    shared_ptr<inode> root = *co_await test_fs.get_root();
     auto metadata1 = *co_await root->get_metadata();
     kernel_assert(metadata1->type == inode::ITYPE_DIR, "metadata.type != T_DIR");
 
@@ -567,13 +580,13 @@ task<void> test_make_nfs2(device_id_t device_id) {
     kernel_assert(read_size == sizeof(nfs::dirent), "read_size != sizeof(nfs::dirent)");
 
     debugf("test_make_nfs: first_file: %d: %s",first_file.inode_number, first_file.name);
-    nfs::nfs_inode* file_inode = *co_await test_fs.get_inode(first_file.inode_number);
+    shared_ptr<nfs::nfs_inode> file_inode = *co_await test_fs.get_inode(first_file.inode_number);
 
     auto metadata2 = *co_await file_inode->get_metadata();
     kernel_assert(metadata2->type == inode::ITYPE_FILE, "metadata.type != T_FILE");
 
     // test file rw
-    simple_file _file((inode*)file_inode);
+    simple_file _file((shared_ptr<inode>)file_inode);
     co_await _file.open();
     int64 file_size = *co_await _file.llseek(0, file::whence_t::END);
 
@@ -618,9 +631,9 @@ task<void> test_make_nfs2(device_id_t device_id) {
     co_await _file.close();
 
     file_inode->print();
-    ((nfs::nfs_inode*)root)->print();
+    ((shared_ptr<nfs::nfs_inode>)root)->print();
 
-    co_await test_fs.put_inode(file_inode);
+    file_inode.reset(nullptr);
 
     // print superblock
     debugf("test_fs.sb.used_generic_blocks: %d", test_fs.sb.used_generic_blocks);
@@ -637,7 +650,7 @@ task<void> test_make_nfs2(device_id_t device_id) {
 void test_nfs(void*){
     
     // kernel_task_queue.push(test_make_nfs(ramdisk_id, 64 * 1024));
-    kernel_task_queue.push(test_make_nfs(virtio_disk_id, 64 * 1024));
-
+    //kernel_task_queue.push(test_make_nfs(virtio_disk_id, 64 * 1024));
+    kernel_task_scheduler[0].schedule(test_make_nfs(virtio_disk_id, 64 * 1024));
     // kernel_task_queue.push(test_make_nfs2(virtio_disk_id));
 }

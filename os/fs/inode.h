@@ -14,6 +14,9 @@
 #include <utils/list.h>
 
 #include <device/device.h>
+#include <utils/buffer.h>
+
+#include <utils/shared_ptr.h>
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
@@ -21,7 +24,7 @@
 class filesystem;
 
 // coroutine inode
-class inode : noncopyable {
+class inode : public referenceable_buffer<inode> {
     public:
     enum inode_type : uint8 {
         ITYPE_NONE = 0,
@@ -44,7 +47,7 @@ class inode : noncopyable {
     };
 
     inode(){}
-    inode(device_id_t _device_id, uint64 _inode_number, filesystem* _fs) : device_id(_device_id), inode_number(_inode_number), _fs(_fs) {}
+    inode(filesystem* _fs, uint64 _inode_number) : fs(_fs), inode_number(_inode_number) {}
     virtual ~inode() {}
     
     // inode operations
@@ -55,74 +58,59 @@ class inode : noncopyable {
     virtual task<const metadata_t*> get_metadata()  { co_return nullptr; };
     
     // we assume current inode is a directory
-    virtual task<int32> create(dentry* new_dentry)  { co_return -EPERM; };
-    virtual task<int32> lookup(dentry* new_dentry) { co_return -EPERM; };
+    virtual task<int32> create(shared_ptr<dentry> new_dentry)  { co_return -EPERM; };
+    virtual task<int32> lookup(shared_ptr<dentry> new_dentry) { co_return -EPERM; };
 
     // generator
-    virtual task<dentry*> read_dir() { co_return nullptr; };
+    virtual task<shared_ptr<dentry>> read_dir() { co_return nullptr; };
 
-    virtual task<int32> link(dentry* old_dentry, dentry* new_dentry)  { co_return -EPERM; };
-    virtual task<int32> symlink(dentry* old_dentry, dentry* new_dentry)  { co_return -EPERM; };
-    virtual task<int32> unlink(dentry* old_dentry )  { co_return -EPERM; };
+    virtual task<int32> link(shared_ptr<dentry> old_dentry, shared_ptr<dentry> new_dentry)  { co_return -EPERM; };
+    virtual task<int32> symlink(shared_ptr<dentry> old_dentry, shared_ptr<dentry> new_dentry)  { co_return -EPERM; };
+    virtual task<int32> unlink(shared_ptr<dentry> old_dentry )  { co_return -EPERM; };
     
-    virtual task<int32> mkdir(dentry* new_dentry)  { co_return -EPERM; };
-    virtual task<int32> rmdir(dentry* old_dentry)  { co_return -EPERM; };
+    virtual task<int32> mkdir(shared_ptr<dentry> new_dentry)  { co_return -EPERM; };
+    virtual task<int32> rmdir(shared_ptr<dentry> old_dentry)  { co_return -EPERM; };
 
     // sync from disk to memory
-    virtual task<int32> load()  { co_return -EPERM; };
-    virtual task<int32> flush()  { co_return -EPERM; };
+    virtual task<int32> __load()  { co_return -EPERM; };
+    virtual task<int32> __flush()  { co_return -EPERM; };
 
-    virtual void get() {
-        inc_ref();
-    }
-    virtual task<void> put() { dec_ref(); co_return task_ok; };
+    
 
-    task<dentry*> get_dentry();
-    task<void> set_dentry(dentry* _dentry);
+    weak_ptr<dentry> get_dentry();
+    void set_dentry(shared_ptr<dentry> _dentry);
 
-    uint64 get_ref() {
-        auto guard = make_lock_guard(ref_lock);
-        return reference_count;
+    void init(filesystem* _fs=nullptr, uint32 _inode_number=0) {
+        fs = _fs;
+        inode_number = _inode_number;
+        this->mark_invalid();
     }
 
-    protected:
-
-    void inc_ref() {
-        auto guard = make_lock_guard(ref_lock);
-        reference_count++;
-    }
-
-    int dec_ref() {
-        auto guard = make_lock_guard(ref_lock);
-        reference_count--;
-        return reference_count;
+    bool match(filesystem* _fs, uint32 _inode_number) {
+        return this->fs == _fs && (this->inode_number == _inode_number || _inode_number == (uint32)(-1));
     }
 
 
 
 public:
-    // spinlock rw_lock;
-    coro_mutex rw_lock {"inode.rw_lock"};
-    spinlock ref_lock {"inode.ref_lock"};
-
-public:
-    // for kernel inode buffer, and metadata
-    int32 reference_count = 0;
-    device_id_t device_id;
-    uint32 inode_number;
-    filesystem* _fs = nullptr;
-
+    filesystem* fs = nullptr;
+    uint32 inode_number = 0;
+    
     // metadata
-protected:
+public:
 
-    bool metadata_valid = false;
-    bool metadata_dirty = false;
     metadata_t metadata;
 
 private:
 friend class dentry;
+
+
+    // template <std::derived_from<inode> T>
+    // friend class T;
+
+    protected:
     // weak reference to dentry
-    dentry* this_dentry = nullptr;
+    weak_ptr<dentry> this_dentry = {};
 
 };
 
@@ -186,14 +174,16 @@ class file {
         }
         task<void> lock() {
             if(!f->in_rw){
-                co_await f->_inode->rw_lock.lock();
+                co_await f->_inode->get();
+                //co_await f->_inode->rw_lock.lock();
             }
             co_return task_ok;
         }
 
         void unlock() {
             if(!f->in_rw){
-                f->_inode->rw_lock.unlock();
+                f->_inode->put();
+                // f->_inode->rw_lock.unlock();
             }
         }
 
@@ -203,8 +193,8 @@ class file {
 
 
     protected:
-    dentry *parent = nullptr; // parent dentry
-    inode *_inode = nullptr; // related inode
+    shared_ptr<dentry> parent = nullptr; // parent dentry
+    shared_ptr<inode> _inode = nullptr; // related inode
     uint64 offset = 0;
 
     private:
@@ -214,7 +204,7 @@ class file {
 class simple_file : public file {
     public:
 
-    simple_file(inode* _inode){
+    simple_file(shared_ptr<inode> _inode){
        this->_inode = _inode;
     }
 
@@ -225,14 +215,13 @@ class simple_file : public file {
     }
 
     task<int32> open() override {
-        _inode->get();
+        // _inode->get();
         offset = 0;
         opened = true;
         co_return 0;
     }
 
     task<int32> close() override {
-        co_await _inode->put();
         _inode = nullptr;
         opened = false;
         co_return 0;

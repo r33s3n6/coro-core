@@ -15,4 +15,5 @@ public:
     nonmovable& operator=(nonmovable&&) = delete;
 };
 
+
 #endif

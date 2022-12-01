@@ -4,23 +4,19 @@
 
 #include <utils/log.h>
 
-task<dentry*> inode::get_dentry() {
-    if (this_dentry == nullptr) {
+weak_ptr<dentry> inode::get_dentry() {
+    if (this_dentry.expired()) {
         warnf("inode::get_dentry: inode has no dentry");
-        co_return nullptr;
     }
-    co_return this_dentry;
+
+    return this_dentry;
 
 }
 
-task<void> inode::set_dentry(dentry* _dentry) {
-    // TODO: maybe there's no need to set_inode nullptr
-    // if(this_dentry) {
-    //     co_await this_dentry->set_inode(nullptr);
+void inode::set_dentry(shared_ptr<dentry> _dentry) {
+    this_dentry = _dentry.get_weak();
+    // if (_dentry) {
+    //     _dentry->set_inode(this);
     // }
-    this_dentry = _dentry;
-    if (this_dentry) {
-        co_await this_dentry->set_inode(this);
-    }
 }
     

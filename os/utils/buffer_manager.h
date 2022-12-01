@@ -3,6 +3,9 @@
 
 
 #include "buffer.h"
+#include <utils/shared_ptr.h>
+
+#include <utils/log.h>
 
 template <typename buffer_t, int32 min_buffer_count = 2048, int32 max_buffer_count = 10240>
 class buffer_manager {
@@ -21,10 +24,12 @@ public:
 
     buffer_manager() {}
 
+
+
     // try to find a buffer node in buffer list, if not found, create a new one
     // or reuse a node not in use
-    template <typename... Args>
-    task<buffer_ptr_t> get(Args&&... match_args) {
+    template <typename derived_t, typename... Args> // for virtual buffer_t
+    task<buffer_ptr_t> get_derived(Args&&... match_args) {
         lock.lock();
 
         // if what we require is in flush list, wait for it finish
@@ -32,7 +37,7 @@ public:
         do {
             in_flush = false;
             for (auto& node : flush_list) {
-                if (node->match(match_args...)) {
+                if (node->match(std::forward<Args>(match_args)...)) {
 
                     in_flush = true;
                     // debugf("block_buffer: wait flush %d", block_no);
@@ -45,7 +50,7 @@ public:
 
         for(auto it = buffer_list.begin(); it != buffer_list.end(); ++it) {
             auto& node = *it;
-            if(node->match(match_args...)) {
+            if(node->match(std::forward<Args>(match_args)...)) {
                 // put node at the front of the list
                 buffer_list.move_to_front(it);
                 lock.unlock();
@@ -79,7 +84,7 @@ public:
             }
 
             // create a new node
-            buf = make_shared<buffer_t>();
+            buf = make_shared<derived_t>();
 
         } else {
             buf = *unused;
@@ -88,7 +93,7 @@ public:
 
         if(!buf->is_dirty()) {
 
-            buf->init(match_args...);
+            buf->init(std::forward<Args>(match_args)...);
             buffer_list.push_front(buf);
             lock.unlock();
 
@@ -112,14 +117,14 @@ public:
         // else we just init it to null
         buffer_ptr_t ret_buf;
         for(auto& node: buffer_list) {
-            if(node->match(match_args...)) {
+            if(node->match(std::forward<Args>(match_args)...)) {
                 ret_buf = node;
                 break;
             }
         }
 
         if(!ret_buf) {
-            buf->init(match_args...);
+            buf->init(std::forward<Args>(match_args)...);
             buffer_list.push_front(buf);
             ret_buf = std::move(buf);
         } else {
@@ -134,7 +139,13 @@ public:
     }
 
     template <typename... Args>
-    task<void> destroy(Args&&... match_args) {
+    task<buffer_ptr_t> get(Args&&... match_args) {
+        co_return *co_await get_derived<buffer_t>(std::forward<Args>(match_args)...);
+    }
+
+    // TODO: Note: destroy makes size not that correct
+    template <typename... Args>
+    task<uint32> destroy(Args&&... match_args) {
 
         list<buffer_ptr_t> flush_list;
 
@@ -147,7 +158,7 @@ public:
             ++it;
 
             auto& node = *old_it;
-            if(node->match(match_args...)) {
+            if(node->match(std::forward<Args>(match_args)...)) {
                 if (node.try_detach_weak()) {
                     // detach and put it into flush_list
                     flush_list.merge(buffer_list, old_it);
@@ -160,6 +171,8 @@ public:
         lock.unlock();
 
         for(auto& node : flush_list) {
+            
+            // debugf("buffer_manager: flush %p", node.get());
             co_await node->flush();
             node->init(); // init to null
         }
@@ -170,11 +183,8 @@ public:
         buffer_list.merge(flush_list);
         lock.unlock();
 
-        if (failed_count) {
-            // warnf("block_buffer: destroy failed: %d nodes are still in use", failed_count);
-            co_return task_fail;
-        }
-        co_return task_ok;
+        co_return failed_count;
+
     }
 
 };

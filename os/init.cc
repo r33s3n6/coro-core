@@ -101,11 +101,11 @@ void init(){
     test_nfs_proc->set_name("test_nfs");
 
     shared_ptr<process> test_nfs2_proc = make_shared<kernel_process>(kernel_process_queue.alloc_pid(), test_nfs2);
-    test_nfs_proc->set_name("test_nfs2");
+    test_nfs2_proc->set_name("test_nfs2");
 
     // kernel_process_queue.push(test_disk_rw_proc);
 
-    kernel_process_queue.push(test_nfs2_proc);
+    kernel_process_queue.push(test_nfs_proc);
 
     
 

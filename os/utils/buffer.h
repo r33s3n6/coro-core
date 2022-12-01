@@ -42,6 +42,12 @@ class reference_guard : noncopyable {
     constexpr reference_guard(reference_guard&& other) : ptr(other.ptr), hold(other.hold) {
         other.hold = false;
     }
+    template<referenceable_type T>
+    constexpr reference_guard(reference_guard<T>&& other) : ptr((ref_type*)(other.ptr)), hold(other.hold) {
+        other.hold = false;
+    }
+    
+
 
     constexpr reference_guard& operator=(reference_guard&& other) {
         std::swap(ptr, other.ptr);
@@ -87,6 +93,9 @@ class reference_guard : noncopyable {
         co_return task_ok;
 
     }
+
+    template <referenceable_type T>
+    friend class reference_guard;
 
 };
 
@@ -139,12 +148,20 @@ public:
     }
 
 
-    bool is_dirty() {
+    bool is_dirty() const {
         return _dirty;
     }
 
     void mark_invalid() {
         _valid = false;
+    }
+
+    void mark_valid() {
+        _valid = true;
+    }
+
+    bool is_valid() const {
+        return _valid;
     }
 
     task<reference_guard<derived_type>> get_ref() {

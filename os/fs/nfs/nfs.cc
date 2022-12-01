@@ -12,6 +12,8 @@
 #include <utils/log.h>
 #include <utils/assert.h>
 
+#include <fs/inode_cache.h>
+
 namespace nfs {
 
 
@@ -53,8 +55,8 @@ uint32 bitmap_get(const uint64 *bitmap, uint32 index) {
 }
 
 task<void> nfs::mount(device_id_t _device_id) {
-    device_id = _device_id;
-    auto bdev = device::get<block_device>(device_id);
+    auto bdev = device::get<block_device>(_device_id);
+    dev = bdev;
 
     auto buf_ptr = *co_await kernel_block_buffer.get(bdev, SUPER_BLOCK_INDEX);
     auto buf_ref = *co_await buf_ptr->get_ref();
@@ -73,61 +75,61 @@ task<void> nfs::mount(device_id_t _device_id) {
 
     
     root_inode = *co_await get_inode(ROOT_INODE_NUMBER);
-    *co_await kernel_dentry_cache.create(nullptr, "", root_inode);
+    co_await kernel_dentry_cache.create(nullptr, "", root_inode);
 
-    inode_table = new nfs_inode(this, INODE_TABLE_NUMBER);
+    // Debug:
+    auto root_dentry = root_inode->get_dentry().lock();
+    kernel_assert(root_dentry != nullptr, "nfs: root dentry is null");
+
+    inode_table = make_shared<nfs_inode>(this, INODE_TABLE_NUMBER);
     co_return task_ok;
 }
 
 // flush all buffers and write superblock
 task<void> nfs::unmount() {
-    auto bdev = device::get<block_device>(device_id);
+    auto bdev = (block_device*)(dev);
 
     lock.lock();
+    if (unmounted) {
+        lock.unlock();
+        co_return task_ok;
+    }
     unmounted = true;
     lock.unlock();
 
     // we can assume nobody would (1) write sb, (2) create inode, after we set unmounted to true
-
-    // auto root_dentry = *co_await root_inode->get_dentry()
-    
-
-    co_await put_inode(root_inode);
+    // co_await put_inode(root_inode);
+    root_inode->print();
     root_inode = nullptr;
 
     co_await kernel_dentry_cache.destroy();
 
-    // this lock is meant for race from put_inode
-    lock.lock();
-
-    no_ref_count = 0;
-    for (auto inode : inode_list) {
-        uint64 ref_count = inode->get_ref();
-        if (ref_count == 0) {
-            no_ref_count++;
-        } else {
-            debugf("nfs: inode %d has %d references", inode->inode_number, ref_count);
-        }
-    }
-
-    while(no_ref_count != (uint32)inode_list.size()) {
-        debugf("nfs: waiting for %d/%d inodes to be released", inode_list.size() - no_ref_count, inode_list.size());
-        co_await no_ref_wait_queue.done(lock); // unlock and let put_inode to wake us up
-    }
-
-    lock.unlock();
-
-    // destroy all inodes pointing to this device
-    for (auto inode : inode_list) {
-        co_await inode->flush();
-        delete inode;
-    }
     
-    inode_list.clear();
+    int32 failed_count;
+    do {
+        failed_count = *co_await kernel_inode_cache.destroy(this, -1);
+    } while (failed_count > 0);
+
+    // this lock is meant for race from put_inode
+    //while (failed_count) {
+        //lock.lock();
+        //no_ref_count = 0;
+        //wait_count = failed_count;
+        //warnf("nfs: waiting for %d inodes to be released", failed_count);
+         // TODO: this is not good
+        //while(no_ref_count != failed_count) {
+        //    lock.unlock();
+        //    // co_await no_ref_wait_queue.done(lock);
+        //    co_await kernel_inode_cache.destroy(this, -1);
+        //    lock.lock();
+        //}
+        //lock.unlock();
+    //}
+    
     
 
     co_await inode_table->flush();
-    delete inode_table;
+    inode_table = nullptr;
 
     if (sb_dirty) {
         auto buf_ptr = *co_await kernel_block_buffer.get(bdev, SUPER_BLOCK_INDEX);
@@ -144,23 +146,24 @@ task<void> nfs::unmount() {
     
 
     debugf("nfs: destroy block buffer");
-    co_await kernel_block_buffer.destroy(device_id);
+    co_await kernel_block_buffer.destroy(dev->device_id);
     debugf("nfs: destroy block buffer done");
 
     
-    device_id = {};
+    dev = nullptr;
     co_return task_ok;
 }
 
-task<inode*> nfs::get_root() {
-    co_return (inode*)root_inode;
+task<shared_ptr<inode>> nfs::get_root() {
+    co_return root_inode;
 }
 
 task<void> nfs::make_fs(device_id_t device_id, uint32 nblocks) {
     auto bdev = device::get<block_device>(device_id);
-    
+    // this->dev = bdev;
+
     nfs temp_fs;
-    temp_fs.device_id = device_id;
+    temp_fs.dev = bdev;
     temp_fs.unmounted = false;
 
     if (nblocks < 1024) {
@@ -196,10 +199,13 @@ task<void> nfs::make_fs(device_id_t device_id, uint32 nblocks) {
     }
     
 
-    temp_fs.inode_table = new nfs_inode(&temp_fs, INODE_TABLE_NUMBER);
-    temp_fs.inode_table->init();
+    temp_fs.inode_table = make_shared<nfs_inode>(&temp_fs, INODE_TABLE_NUMBER);
+    temp_fs.inode_table->init_data();
     temp_fs.inode_table->metadata.type = inode::ITYPE_FILE;
     temp_fs.inode_table->metadata.nlinks = 1;
+    temp_fs.inode_table->mark_dirty();
+    //temp_fs.inode_table->mark_valid();
+    debugf("nfs::make_fs: inode_table: %p\n", temp_fs.inode_table.get());
     
     dinode temp_dinode;
     temp_dinode.type = inode::ITYPE_NEXT_FREE_INODE;
@@ -209,9 +215,13 @@ task<void> nfs::make_fs(device_id_t device_id, uint32 nblocks) {
 
 
     temp_fs.root_inode = *co_await temp_fs.get_inode(ROOT_INODE_NUMBER);
-    temp_fs.root_inode->init();
+    temp_fs.root_inode->init_data();
     temp_fs.root_inode->metadata.type = inode::ITYPE_DIR;
     temp_fs.root_inode->metadata.nlinks = 1;
+    temp_fs.root_inode->mark_dirty();
+    //temp_fs.root_inode->mark_valid();
+    debugf("nfs::make_fs: root_inode: %p\n", temp_fs.root_inode.get());
+
 
     debugf("nfs::make_fs: waiting for unmount\n");
     co_await temp_fs.unmount();
@@ -219,7 +229,7 @@ task<void> nfs::make_fs(device_id_t device_id, uint32 nblocks) {
 }
 
 task<uint32> nfs::alloc_block() {
-    auto bdev = device::get<block_device>(device_id);
+    auto bdev = (block_device*)(dev);
     
     lock.lock();
     if (sb.used_generic_blocks >= sb.total_generic_blocks) {
@@ -295,7 +305,7 @@ task<uint32> nfs::alloc_block() {
 
 task<void> nfs::free_block(uint32 block_index) {
 
-    auto bdev = device::get<block_device>(device_id);
+    auto bdev = (block_device*)(dev);
 
     // debugf("nfs: free_block: %d", block_index);
 
@@ -334,36 +344,37 @@ task<void> nfs::free_block(uint32 block_index) {
     co_return task_ok;
 }
 
-task<nfs_inode*> nfs::alloc_inode() {
+task<nfs::inode_ptr_t> nfs::alloc_inode() {
     // traverse the inode table, find a free inode
     dinode temp_dinode;
     dinode new_dinode;
 
-    co_await inode_table->rw_lock.lock();
+    uint32 next_free_inode;
+    {
+        auto inode_table_ref = *co_await inode_table->get_ref();
 
-    co_await inode_table->read(&temp_dinode, 0, sizeof(dinode));
+        co_await inode_table_ref->read(&temp_dinode, 0, sizeof(dinode));
 
-    if (temp_dinode.type != inode::ITYPE_NEXT_FREE_INODE) {
-        warnf("nfs: alloc_inode: temp_dinode.type != inode::ITYPE_NEXT_FREE_INODE: %d != %d", temp_dinode.type, inode::ITYPE_NEXT_FREE_INODE);
-        inode_table->rw_lock.unlock();
-        co_return task_fail;
+        if (temp_dinode.type != inode::ITYPE_NEXT_FREE_INODE) {
+            warnf("nfs: alloc_inode: temp_dinode.type != inode::ITYPE_NEXT_FREE_INODE: %d != %d", temp_dinode.type, inode::ITYPE_NEXT_FREE_INODE);
+            co_return task_fail;
+        }
+
+        next_free_inode = temp_dinode.size;
+
+        co_await inode_table_ref->read(&new_dinode, next_free_inode*sizeof(dinode), sizeof(dinode));
+
+        if (new_dinode.type == inode::ITYPE_NEXT_FREE_INODE) {
+            temp_dinode.size = new_dinode.size;
+        } else {
+            temp_dinode.size = next_free_inode + 1;
+        }
+        co_await inode_table_ref->write(&temp_dinode, 0, sizeof(dinode));
+
     }
-
-    uint32 next_free_inode = temp_dinode.size;
-
-    co_await inode_table->read(&new_dinode, next_free_inode*sizeof(dinode), sizeof(dinode));
-
-    if (new_dinode.type == inode::ITYPE_NEXT_FREE_INODE) {
-        temp_dinode.size = new_dinode.size;
-    } else {
-        temp_dinode.size = next_free_inode + 1;
-    }
-    co_await inode_table->write(&temp_dinode, 0, sizeof(dinode));
-
-    inode_table->rw_lock.unlock();
 
     auto new_inode = *co_await get_inode(next_free_inode);
-    new_inode->init();
+    new_inode->init_data();
 
     lock.lock();
     sb.ninodes++;
@@ -381,27 +392,26 @@ task<void> nfs::free_inode(uint32 inode_index) {
     // traverse the inode table, find a free inode
     dinode temp_dinode;
     dinode new_dinode;
+    {
+        auto inode_table_ref = *co_await inode_table->get_ref();
 
-    co_await inode_table->rw_lock.lock();
+        co_await inode_table_ref->read(&temp_dinode, 0, sizeof(dinode));
 
-    co_await inode_table->read(&temp_dinode, 0, sizeof(dinode));
+        if (temp_dinode.type != inode::ITYPE_NEXT_FREE_INODE) {
+            warnf("nfs: alloc_inode: temp_dinode.type != inode::ITYPE_NEXT_FREE_INODE: %d != %d", temp_dinode.type, inode::ITYPE_NEXT_FREE_INODE);
+            co_return task_fail;
+        }
 
-    if (temp_dinode.type != inode::ITYPE_NEXT_FREE_INODE) {
-        warnf("nfs: alloc_inode: temp_dinode.type != inode::ITYPE_NEXT_FREE_INODE: %d != %d", temp_dinode.type, inode::ITYPE_NEXT_FREE_INODE);
-        inode_table->rw_lock.unlock();
-        co_return task_fail;
+        new_dinode.size = temp_dinode.size;
+        new_dinode.type = inode::ITYPE_NEXT_FREE_INODE;
+
+        temp_dinode.size = inode_index;
+        // write back
+
+        co_await inode_table_ref->write(&temp_dinode, 0, sizeof(dinode));
+        co_await inode_table_ref->write(&new_dinode, inode_index*sizeof(dinode), sizeof(dinode));
+
     }
-
-    new_dinode.size = temp_dinode.size;
-    new_dinode.type = inode::ITYPE_NEXT_FREE_INODE;
-
-    temp_dinode.size = inode_index;
-    // write back
-
-    co_await inode_table->write(&temp_dinode, 0, sizeof(dinode));
-    co_await inode_table->write(&new_dinode, inode_index*sizeof(dinode), sizeof(dinode));
-
-    inode_table->rw_lock.unlock();
 
     lock.lock();
     sb.ninodes--;
@@ -411,51 +421,43 @@ task<void> nfs::free_inode(uint32 inode_index) {
     co_return task_ok;
 }
 
-
-task<nfs_inode*> nfs::get_inode(uint32 inode_number) {
+task<nfs::inode_ptr_t> nfs::get_inode(uint32 inode_number) {
     auto guard = make_lock_guard(lock);
     if (unmounted) {
-        co_return nullptr;
+        co_return inode_ptr_t{};
     }
-    for (auto &inode : inode_list) {
-        if (inode->inode_number == inode_number) {
-            inode->inc_ref();
-            co_return inode;
-        }
-    }
-    auto new_inode = new nfs_inode(this, inode_number);
-    new_inode->inc_ref();
 
-    inode_list.push_front(new_inode);
+    auto inode_ptr = *co_await kernel_inode_cache.get_derived<inode_t>(this, inode_number);
 
-    co_return new_inode;
+    co_return inode_ptr;
 }
 
-task<void> nfs::put_inode(nfs_inode *inode){
-    lock.lock();
-    int ref = inode->dec_ref();
 
-    if (ref == 0) {
-        if (inode->metadata.nlinks == 0) {
-            lock.unlock();
-            co_await inode->truncate(0);
-            inode->metadata_valid = false; // do not flush
-            inode->metadata_dirty = false;
-            // delete
-            co_await free_inode(inode->inode_number);
-            lock.lock();
-        }
-    }
+// called when inode destruct
+void nfs::put_inode(uint32 inode_number){ 
+    (void)(inode_number);
+    lock.lock();
+
+
     if (unmounted) {
-        if (ref == 0) {
-            no_ref_count++;
-            // co_await inode->flush()
-        }
-        if (no_ref_count == (uint32)inode_list.size()) {
+        no_ref_count++;
+
+        if (no_ref_count == wait_count) {
             no_ref_wait_queue.wake_up();
         }
     }
+
     lock.unlock();
+
+}
+
+
+
+task<void> nfs::drop_inode(uint32 inode_number){
+    co_await free_inode(inode_number);
+
+    put_inode(inode_number);
+
     co_return task_ok;
 }
 

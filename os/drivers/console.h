@@ -9,11 +9,11 @@ class sbi_console_file : public file {
 
 
     sbi_console_file(){
-        _inode = new inode();
+        _inode = make_shared<inode>();
     }
 
     ~sbi_console_file() {
-        delete _inode;
+        // delete _inode;
     }
 
     virtual task<int32> open() override {

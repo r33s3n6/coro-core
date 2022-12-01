@@ -20,19 +20,17 @@ class inode;
 
 class dentry {
     private:
-    inode* _inode = nullptr;
+    shared_ptr<inode> _inode = nullptr;
     public:
     quick_string name;
 
 
-    dentry* parent = nullptr;
+    shared_ptr<dentry> parent = nullptr;
     
     uint32 reference_count = 0;
     spinlock lock {"dentry.lock"};
     
-    list<dentry*> children;
-
-    inode* get_inode() {
+    shared_ptr<inode> get_inode() {
         return _inode;
     }
     
@@ -42,7 +40,9 @@ private:
     friend class inode;
     friend class dentry_cache;
 
-    task<void> set_inode(inode* inode);
+    public:
+
+    void set_inode(shared_ptr<inode> inode);
 
 
 
@@ -52,7 +52,7 @@ private:
 // dentry cache and path walk helper functions
 
 struct dentry_cache_entry {
-    list<dentry> dentry_list;
+    list<shared_ptr<dentry>> dentry_list;
     coro_mutex lock {"dentry_cache_entry.lock"};
 };
 
@@ -66,24 +66,24 @@ class dentry_cache {
     public:
 
 
-    void put(dentry* dentry);
-    task<dentry*> get(dentry* parent, const quick_string_ref& name_ref);
-    task<dentry*> get(dentry* parent, const char* name);
+    void put(shared_ptr<dentry> dentry);
+    task<shared_ptr<dentry>> get(shared_ptr<dentry> parent, const quick_string_ref& name_ref);
+    task<shared_ptr<dentry>> get(shared_ptr<dentry> parent, const char* name);
 
-    task<dentry*> get_at(dentry* current, const char* path);
-    task<dentry*> get_or_create(dentry* parent, const char* name, inode* inode);
-    task<dentry*> create(dentry* parent, const char* name, inode* inode);
-    task<dentry*> lookup(dentry* parent, const quick_string_ref& name_ref);
+    task<shared_ptr<dentry>> get_at(shared_ptr<dentry> current, const char* path);
+    task<shared_ptr<dentry>> get_or_create(shared_ptr<dentry> parent, const char* name, shared_ptr<inode> inode);
+    task<shared_ptr<dentry>> create(shared_ptr<dentry> parent, const char* name, shared_ptr<inode> inode);
+    task<shared_ptr<dentry>> lookup(shared_ptr<dentry> parent, const quick_string_ref& name_ref);
 
     task<void> destroy();
     
     private:
     // return new dentry with lock held
-    task<dentry*> __add(const quick_string_ref& name);
+    task<shared_ptr<dentry>> __add(const quick_string_ref& name);
 
-    task<dentry*> __reuse(const quick_string_ref& name);
+    task<shared_ptr<dentry>> __reuse(const quick_string_ref& name);
 
-    task<dentry*> __get_free_dentry(const quick_string_ref& name_ref, dentry* parent);
+    task<shared_ptr<dentry>> __get_free_dentry(const quick_string_ref& name_ref, shared_ptr<dentry> parent);
 
 
     uint32 size = 0;

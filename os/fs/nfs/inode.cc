@@ -14,17 +14,29 @@ namespace nfs {
 uint32 nfs_inode::cache_hit = 0;
 uint32 nfs_inode::cache_miss = 0;
 
-nfs_inode::~nfs_inode(){
-    // set_dentry(nullptr);
-}
 
-task<void> nfs_inode::put() {
-    co_await ((nfs*)_fs)->put_inode(this);
-    co_return task_ok;
+nfs_inode::~nfs_inode() {
+    if(this->is_valid()) {
+        if (metadata.nlinks == 0) {
+            kernel_task_scheduler[0].schedule(((nfs*)fs)->drop_inode(inode_number));
+            return;
+        }
+    }
+    ((nfs*)fs)->put_inode(inode_number);
 }
 
 void nfs_inode::print(){
-    infof("nfs_inode::print\ninode_number: %d\nperm: %d\nsize: %d\ntype: %d\naddrs[0]: %d\nnext_addr_block: %d", inode_number, metadata.perm, metadata.size, metadata.type, addrs[0], next_addr_block);
+    infof(
+    "nfs_inode::print\n"
+    "inode_number: %d\n"
+    "fs: %p\n"
+    "perm: %d\n"
+    "nlinks: %d\n"
+    "size: %d\n"
+    "type: %d\n"
+    "addrs[0]: %d\n"
+    "next_addr_block: %d"
+    , inode_number, fs, metadata.perm, metadata.nlinks, metadata.size, metadata.type, addrs[0], next_addr_block);
 }
 
 template <bool _write>
@@ -32,7 +44,7 @@ task<void> nfs_inode::direct_data_block_rw(
     uint32 direct_offset, uint32 data_block_offset,
     std::conditional_t<_write, const uint8 *, uint8*> buf, uint32 size) { 
     
-    auto bdev = device::get<block_device>(device_id);
+    auto bdev = (block_device*)(this->fs->get_device());
 
     kernel_assert(direct_offset < NUM_DIRECT_DATA, "direct_offset out of range");
     kernel_assert(data_block_offset + size <= block_device::BLOCK_SIZE, "size out of range");
@@ -47,9 +59,9 @@ task<void> nfs_inode::direct_data_block_rw(
         if constexpr (_write){
             
             // allocate a new block
-            data_block_index = *co_await  ((nfs*)_fs)->alloc_block();
+            data_block_index = *co_await  ((nfs*)fs)->alloc_block();
             addrs[direct_offset] = data_block_index;
-            metadata_dirty = true;
+            mark_dirty();
             clear = true;
         } else {
             // all zero block
@@ -81,7 +93,7 @@ task<void> nfs_inode::data_block_rw(
     uint32 addr_block_index, uint32 addr_block_offset, uint32 data_block_offset,
     std::conditional_t<_write, const uint8 *, uint8*> buf, uint32 size) { 
     
-    auto bdev = device::get<block_device>(device_id);
+    auto bdev = (block_device*)(this->fs->get_device());
     
     kernel_assert(addr_block_offset < NUM_ADDRS, "addr_block_offset out of range");
     kernel_assert(data_block_offset + size <= block_device::BLOCK_SIZE, "size out of range");
@@ -102,7 +114,7 @@ task<void> nfs_inode::data_block_rw(
         if(data_block_index == (uint32)-1){
             if constexpr (_write){
                 // allocate a new block
-                data_block_index = *co_await  ((nfs*)_fs)->alloc_block();
+                data_block_index = *co_await  ((nfs*)fs)->alloc_block();
                 _addr_block->addrs[addr_block_offset] = data_block_index;
                 addr_block_buf_ref->mark_dirty();
                 clear = true;
@@ -138,7 +150,7 @@ task<void> nfs_inode::data_block_rw(
 
 template <bool _write>
 task<int64> nfs_inode::data_rw(std::conditional_t<_write, const uint8 *, uint8*> buf, uint64 offset, uint64 size) {
-    auto bdev = device::get<block_device>(device_id);
+    auto bdev = (block_device*)(this->fs->get_device());
 
     int64 rw_size = 0;
     uint32 block_rw_size = 0;
@@ -147,11 +159,6 @@ task<int64> nfs_inode::data_rw(std::conditional_t<_write, const uint8 *, uint8*>
     uint32 addr_block_offset = 0;
     // uint32 data_block_index = 0;
     uint32 data_block_offset = 0;
-
-
-    if(!metadata_valid) {
-        co_await load();
-    }
 
 
     while (offset < DIRECT_DATA_SIZE && size > 0) {
@@ -177,8 +184,8 @@ task<int64> nfs_inode::data_rw(std::conditional_t<_write, const uint8 *, uint8*>
     if (next_addr_block == (uint32)-1) {
         if constexpr (_write) {
             // allocate a new block
-            next_addr_block = *co_await  ((nfs*)_fs)->alloc_block();
-            metadata_dirty = true;
+            next_addr_block = *co_await ((nfs*)fs)->alloc_block();
+            mark_dirty();
 
             // init next_addr_block with -1
             auto next_addr_block_buf_ptr = *co_await kernel_block_buffer.get(bdev, next_addr_block);
@@ -259,31 +266,28 @@ task<int64> nfs_inode::write(const void *src, uint64 offset, uint64 size) {
     int64 write_size = *co_await data_rw<true>((const uint8*)src, offset, size);
     if (offset + write_size > metadata.size) {
         metadata.size = offset + write_size;
-        metadata_dirty = true;
+        this->mark_dirty();
     }
     co_return write_size;
 }
 
 task<const nfs_inode::metadata_t*> nfs_inode::get_metadata() {
-    if (!metadata_valid) {
-        // read inode information from disk
-        co_await load();
-    }
+    // if (!metadata_valid) {
+    //     // read inode information from disk
+    //     co_await load();
+    // }
 
     co_return &metadata;
 }
 
 task<int32> nfs_inode::truncate(int64 size) {
-    auto bdev = device::get<block_device>(device_id);
+    auto bdev = (block_device*)(fs->get_device());
     // resize inode
     
     // TODO: only support truncate to 0 now
     if (size != 0) {
         co_return -1;
     }
-
-
-    co_await load();
 
     if (metadata.size == 0) {
         co_return 0;
@@ -292,7 +296,7 @@ task<int32> nfs_inode::truncate(int64 size) {
     // free all direct data blocks
     for (uint32 i = 0; i < NUM_DIRECT_DATA; i++) {
         if (addrs[i] != (uint32)-1) {
-            co_await ((nfs*)_fs)->free_block(addrs[i]);
+            co_await ((nfs*)fs)->free_block(addrs[i]);
             addrs[i] = (uint32)-1;
         }
     }
@@ -312,47 +316,46 @@ task<int32> nfs_inode::truncate(int64 size) {
             for (uint32 i = 0; i < NUM_ADDRS; i++) {
                 data_block_index = _addr_block->addrs[i];
                 if (data_block_index != (uint32)-1) {
-                    co_await  ((nfs*)_fs)->free_block(data_block_index);
+                    co_await ((nfs*)fs)->free_block(data_block_index);
                 }
             }
             next_addr_block_index = _addr_block->next_addr_block;
         }
 
-        co_await  ((nfs*)_fs)->free_block(addr_block_index);
+        co_await ((nfs*)fs)->free_block(addr_block_index);
         addr_block_index = next_addr_block_index;
     }
     
     next_addr_block = (uint32)-1;
     metadata.size = 0;
-    metadata_dirty = true;
+    this->mark_dirty();
 
     co_return 0;
 }
 
-task<int32> nfs_inode::__link(dentry* new_dentry, nfs_inode* _inode) {
+task<int32> nfs_inode::__link(shared_ptr<dentry> new_dentry, shared_ptr<nfs_inode> _inode) {
     // TODO: performance issue
 
     dirent temp_dirent;
     dirent new_dirent;
     uint64 offset = 0;
 
-    // make metadata valid
-    co_await load();
+    {
+        auto inode_ref = *co_await _inode->get_ref();
 
-    new_dirent.inode_number = _inode->inode_number;
-    strncpy(new_dirent.name, new_dentry->name.data(), new_dentry->name.size());
-    new_dirent.name[new_dentry->name.size()] = 0;
+        new_dirent.inode_number = inode_ref->inode_number;
+        strncpy(new_dirent.name, new_dentry->name.data(), new_dentry->name.size());
+        new_dirent.name[new_dentry->name.size()] = 0;
 
-    co_await _inode->rw_lock.lock();
-    co_await _inode->load();
+        inode_ref->set_dentry(new_dentry);
+        new_dentry->set_inode(_inode);
 
-    co_await _inode->set_dentry(new_dentry);
-    _inode->metadata.nlinks += 1;
-    _inode->metadata_dirty = true;
 
-    _inode->rw_lock.unlock();
+        inode_ref->metadata.nlinks += 1;
+        inode_ref->mark_dirty();
+    }
 
-    //co_await _fs->put_inode(_inode);
+
 
     // find empty slot
     while (true) {
@@ -379,31 +382,29 @@ task<int32> nfs_inode::__link(dentry* new_dentry, nfs_inode* _inode) {
 }
 
 
-task<int32> nfs_inode::create(dentry* new_dentry) {
+task<int32> nfs_inode::create(shared_ptr<dentry> new_dentry) {
 
     if (new_dentry->name.size() > MAX_NAME_LENGTH) {
         co_return -EINVAL;
     }
     
 
-    auto new_inode = *co_await  ((nfs*)_fs)->alloc_inode();
+    auto new_inode = *co_await ((nfs*)fs)->alloc_inode();
+    new_inode->print();
 
-    co_await new_inode->rw_lock.lock();
-    co_await new_inode->load();
+    {
+        auto inode_ref = *co_await new_inode->get_ref();
 
-    new_inode->metadata.type = inode::ITYPE_FILE;
-    new_inode->metadata_dirty = true;
+        inode_ref->metadata.type = inode::ITYPE_FILE;
+        inode_ref->mark_dirty();
 
-    new_inode->rw_lock.unlock();
+    }
 
     int32 ret = *co_await __link(new_dentry, new_inode);
-
-    co_await  ((nfs*)_fs)->put_inode(new_inode);
-
     co_return ret;
 }
 
-task<int32> nfs_inode::lookup(dentry* new_dentry) {
+task<int32> nfs_inode::lookup(shared_ptr<dentry> new_dentry) {
 
     if (new_dentry->name.size() > MAX_NAME_LENGTH) {
         co_return -EINVAL;
@@ -431,29 +432,34 @@ task<int32> nfs_inode::lookup(dentry* new_dentry) {
 
         if (strcmp(_dirent.name, new_dentry->name.data()) == 0) {
             // found
-            nfs_inode* new_inode = *co_await  ((nfs*)_fs)->get_inode(_dirent.inode_number);
-            co_await new_inode->set_dentry(new_dentry);
-            co_await  ((nfs*)_fs)->put_inode(new_inode);
+            auto new_inode = *co_await ((nfs*)fs)->get_inode(_dirent.inode_number);
+            auto inode_ref = *co_await new_inode->get_ref();
+            inode_ref->set_dentry(new_dentry);
+            new_dentry->set_inode(new_inode);
+
             co_return 0;
         }
 
     }
 }
 // generator
-task<dentry*> nfs_inode::read_dir() {
-    dentry* this_dentry = *co_await get_dentry();
-    kernel_assert(this_dentry->get_inode() == this, "parent inode mismatch");
+task<shared_ptr<dentry>> nfs_inode::read_dir() {
+
+    shared_ptr<dentry> this_dentry = this->this_dentry.lock();
+
+    kernel_assert(this_dentry->get_inode().get() == this, "parent inode mismatch");
 
     uint32 offset = 0;
     dirent _dirent;
 
-    // make metadata valid
-    co_await load();
+
+    shared_ptr<dentry> d = nullptr;
     
     while (true) {
         if (offset >= metadata.size) {
             co_return nullptr;
         }
+
         int64 read_size = *co_await read(&_dirent, offset, sizeof(dirent));
         if (read_size != sizeof(dirent)) {
             warnf("read dirent failed");
@@ -464,15 +470,17 @@ task<dentry*> nfs_inode::read_dir() {
             continue;
         }
 
-        nfs_inode* new_inode = *co_await  ((nfs*)_fs)->get_inode(_dirent.inode_number);
+        {
+            auto new_inode = *co_await ((nfs*)fs)->get_inode(_dirent.inode_number);
 
-        dentry* d = *co_await kernel_dentry_cache.get_or_create(this_dentry, _dirent.name, new_inode);
+            d = *co_await kernel_dentry_cache.get_or_create(this_dentry, _dirent.name, new_inode);
+        }
 
-        co_await  ((nfs*)_fs)->put_inode(new_inode);
+
 
         
 
-        // dentry* new_dentry = *co_await kernel_dentry_cache.create(this_dentry, _dirent.name, new_inode);
+        // shared_ptr<dentry> new_dentry = *co_await kernel_dentry_cache.create(this_dentry, _dirent.name, new_inode);
 // 
         // co_await _fs->put_inode(new_inode);
 
@@ -482,7 +490,7 @@ task<dentry*> nfs_inode::read_dir() {
 }
 
 
-task<int32> nfs_inode::link(dentry* old_dentry, dentry* new_dentry) {
+task<int32> nfs_inode::link(shared_ptr<dentry> old_dentry, shared_ptr<dentry> new_dentry) {
     if (new_dentry->name.size() > MAX_NAME_LENGTH) {
         co_return -EINVAL;
     }
@@ -491,17 +499,17 @@ task<int32> nfs_inode::link(dentry* old_dentry, dentry* new_dentry) {
     //     co_await lookup(old_dentry);
     // }
 
-    nfs_inode* old_inode = (nfs_inode*)old_dentry->get_inode();
+    shared_ptr<nfs_inode> old_inode = (shared_ptr<nfs_inode>)old_dentry->get_inode();
 
     co_return *co_await __link(new_dentry, old_inode);
 
 }
-task<int32> nfs_inode::symlink(dentry* old_dentry, dentry* new_dentry) {
+task<int32> nfs_inode::symlink(shared_ptr<dentry> old_dentry, shared_ptr<dentry> new_dentry) {
     (void)(old_dentry);
     (void)(new_dentry);
     co_return -EPERM;
 }
-task<int32> nfs_inode::unlink(dentry* old_dentry) {
+task<int32> nfs_inode::unlink(shared_ptr<dentry> old_dentry) {
     if (old_dentry->name.size() > MAX_NAME_LENGTH) {
         co_return -EINVAL;
     }
@@ -526,22 +534,25 @@ task<int32> nfs_inode::unlink(dentry* old_dentry) {
         if (_dirent.inode_number != 0) {
             if (strcmp(_dirent.name, old_dentry->name.data()) == 0) {
                 // found
-                nfs_inode* old_inode;
+
                 
-                old_inode = (nfs_inode*)old_dentry->get_inode();
+                auto old_inode = (shared_ptr<nfs_inode>)old_dentry->get_inode();
+
+                {
+                    auto inode_ref = *co_await old_inode->get_ref();
+                    
+                    if (--inode_ref->metadata.nlinks == 0){
+                        co_await old_inode->truncate(0);
+                    }
+                    inode_ref->mark_dirty();
+                }
 
 
-                co_await old_inode->rw_lock.lock();
-
-                co_await old_inode->load();
-
-                old_inode->metadata.nlinks -= 1;
-                old_inode->metadata_dirty = true;
-
-                old_inode->rw_lock.unlock();
 
                 _dirent.inode_number = 0;
                 co_await write(&_dirent, offset, sizeof(dirent));
+
+
 
                 co_return 0;
             }
@@ -555,41 +566,36 @@ task<int32> nfs_inode::unlink(dentry* old_dentry) {
 }
 
 
-task<int32> nfs_inode::mkdir(dentry* new_dentry) {
+task<int32> nfs_inode::mkdir(shared_ptr<dentry> new_dentry) {
+    // validate name
     if (new_dentry->name.size() > MAX_NAME_LENGTH) {
         co_return -EINVAL;
     }
     
 
-    auto new_inode = *co_await ((nfs*)_fs)->alloc_inode();
+    auto new_inode = *co_await ((nfs*)fs)->alloc_inode();
+    {
+        auto inode_ref = *co_await new_inode->get_ref();
 
-    co_await new_inode->rw_lock.lock();
-    co_await new_inode->load();
-
-
-
-    new_inode->metadata.type = inode::ITYPE_DIR;
-    new_inode->metadata_dirty = true;
-
-    new_inode->rw_lock.unlock();
+        inode_ref->metadata.type = inode::ITYPE_DIR;
+        inode_ref->mark_dirty();
+    }
 
     int32 ret = *co_await __link(new_dentry, new_inode);
 
-    co_await ((nfs*)_fs)->put_inode(new_inode);
+
 
     co_return ret;
 }
 
 // 
-task<int32> nfs_inode::rmdir(dentry* old_dentry) {
+task<int32> nfs_inode::rmdir(shared_ptr<dentry> old_dentry) {
    (void)(old_dentry);
     co_return -EPERM;
 }
 
-void nfs_inode::init() {
-    kernel_assert(!metadata_valid && !metadata_dirty, "nfs_inode::init: metadata is valid or dirty");
-    metadata_valid = true;
-    metadata_dirty = true;
+void nfs_inode::init_data() {
+
     metadata.size = 0;
     metadata.perm = 0;
     metadata.type = 0;
@@ -598,20 +604,21 @@ void nfs_inode::init() {
     memset(addrs, 0xff, sizeof(addrs));
 
     next_addr_block = (uint32)-1;
+
+    this->mark_valid();
+    this->mark_dirty();
 }
 
-task<int32> nfs_inode::load() {
-    if (metadata_valid) {
-        co_return 0;
-    }
+task<int32> nfs_inode::__load() {
 
     dinode dinode_buf;
     dinode* disk_inode;
     if (inode_number == INODE_TABLE_NUMBER) {
         // inode table, we read it from superblock
-        disk_inode = &((nfs*)_fs)->sb.inode_table;
+        disk_inode = &((nfs*)fs)->sb.inode_table;
     } else {
-        co_await ((nfs*)_fs)->inode_table->read(&dinode_buf, inode_number * sizeof(dinode), sizeof(dinode));
+        auto inode_table_ref = *co_await ((nfs*)fs)->inode_table->get_ref();
+        co_await inode_table_ref->read(&dinode_buf, inode_number * sizeof(dinode), sizeof(dinode));
         disk_inode = &dinode_buf;
     }
 
@@ -627,27 +634,16 @@ task<int32> nfs_inode::load() {
     }
     next_addr_block = disk_inode->next_addr_block;
 
-    metadata_valid = true;
-    metadata_dirty = false;
-
     co_return 0;
 }
-task<int32> nfs_inode::flush() {
-    // assert metadata_valid
-    if (!metadata_valid) {
-        co_return -1;
-    }
-
-    if (!metadata_dirty) {
-        co_return 0;
-    }
+task<int32> nfs_inode::__flush() {
 
     dinode dinode_buf;
     dinode* disk_inode;
 
     if (inode_number == INODE_TABLE_NUMBER) {
         // inode table, we write it to superblock
-        disk_inode = &((nfs*)_fs)->sb.inode_table;
+        disk_inode = &((nfs*)fs)->sb.inode_table;
     } else {
         disk_inode = &dinode_buf;
     }
@@ -666,13 +662,14 @@ task<int32> nfs_inode::flush() {
 
     if (inode_number == INODE_TABLE_NUMBER) {
         // inode table, we write it to superblock
-        ((nfs*)_fs)->sb_dirty = true;
+        ((nfs*)fs)->sb_dirty = true;
     } else {
-        co_await ((nfs*)_fs)->inode_table->write(disk_inode, inode_number * sizeof(dinode), sizeof(dinode));
+        // debugf("flush inode %d", inode_number);
+        // print();
+        auto inode_table_ref = *co_await ((nfs*)fs)->inode_table->get_ref();
+        co_await inode_table_ref->write(disk_inode, inode_number * sizeof(dinode), sizeof(dinode));
     }
 
-
-    metadata_dirty = false;
 
     co_return 0;
 }
@@ -681,7 +678,7 @@ task<int32> nfs_inode::flush() {
 task<void> nfs_inode::get_block_index(uint32 start_addr_block, uint64 offset,
          uint32* addr_block_index, uint32* addr_block_offset, uint32* data_block_index, uint32* data_block_offset) {
     
-    auto bdev = device::get<block_device>(device_id);
+    auto bdev = (block_device*)fs->get_device();
 
     uint32 _addr_block_index = start_addr_block;
 
@@ -712,7 +709,7 @@ task<void> nfs_inode::get_block_index(uint32 start_addr_block, uint64 offset,
         // buf_ptr hold the last addr block
         
 
-        uint32 new_addr_block_index = *co_await ((nfs*)_fs)->alloc_block();
+        uint32 new_addr_block_index = *co_await ((nfs*)fs)->alloc_block();
         // debugf("nfs_inode::get_block_index: alloc new addr block %d", new_addr_block_index);
         auto new_buf_ptr = *co_await kernel_block_buffer.get(bdev, new_addr_block_index);
 
@@ -773,591 +770,3 @@ task<void> nfs_inode::get_block_index(uint32 start_addr_block, uint64 offset,
 }
 
 
-/*
- struct
-{
-    struct spinlock lock;
-    struct inode inode[NINODE];
-} itable;
-
-static uint
-bmap(struct inode *ip, uint bn);
-static struct inode *
-inode_or_parent_by_name(char *path, int nameiparent, char *name);
-
-// Free a disk block.
-static void free_disk_block(int dev, uint block_id) {
-    struct buf *bitmap_block;
-    int bit_offset; // in bitmap block
-    int mask;
-
-    bitmap_block = acquire_buf_and_read(dev, BITMAP_BLOCK_CONTAINING(block_id, sb));
-    bit_offset = block_id % BITS_PER_BITMAP_BLOCK;
-    mask = 1 << (bit_offset % 8);
-    if ((bitmap_block->data[bit_offset / 8] & mask) == 0)
-        panic("freeing free block");
-    bitmap_block->data[bit_offset / 8] &= ~mask;
-    write_buf_to_disk(bitmap_block);
-    release_buf(bitmap_block);
-}
-
-// Copy the next path element from path into name.
-// Return a pointer to the element following the copied one.
-// The returned path has no leading slashes,
-// so the caller can check *path=='\0' to see if the name is the last one.
-// If no name to remove, return 0.
-//
-// Examples:
-//   skipelem("a/bb/c", name) = "bb/c", setting name = "a"
-//   skipelem("///a//bb", name) = "bb", setting name = "a"
-//   skipelem("a", name) = "", setting name = "a"
-//   skipelem("", name) = skipelem("////", name) = 0
-//
-static char *
-skipelem(char *path, char *name) {
-    char *s;
-    int len;
-
-    while (*path == '/')
-        path++;
-    if (*path == 0)
-        return 0;
-    s = path;
-    while (*path != '/' && *path != 0)
-        path++;
-    len = path - s;
-    if (len >= DIRSIZ)
-        memmove(name, s, DIRSIZ);
-    else {
-        memmove(name, s, len);
-        name[len] = 0;
-    }
-    while (*path == '/')
-        path++;
-    return path;
-}
-
-// Zero a block.
-static void
-set_block_to_zero(int dev, int bno) {
-    struct buf *bp;
-    bp = acquire_buf_and_read(dev, bno);
-    memset(bp->data, 0, BSIZE);
-    write_buf_to_disk(bp);
-    release_buf(bp);
-}
-
-// Blocks.
-
-// Allocate a zeroed disk block.
-static uint
-alloc_zeroed_block(uint dev) {
-    int base_block_id;
-    int local_block_id;
-    int bit_mask;
-    struct buf *bitmap_block;
-
-    bitmap_block = nullptr;
-    for (base_block_id = 0; base_block_id < sb.total_blocks; base_block_id += BITS_PER_BITMAP_BLOCK) {
-        // the corresponding bitmap block
-        bitmap_block = acquire_buf_and_read(dev, BITMAP_BLOCK_CONTAINING(base_block_id, sb));
-
-        // iterate all bits in this bitmap block
-        for (local_block_id = 0; local_block_id < BITS_PER_BITMAP_BLOCK && base_block_id + local_block_id < sb.total_blocks; local_block_id++) {
-            bit_mask = 1 << (local_block_id % 8);
-            if ((bitmap_block->data[local_block_id / 8] & bit_mask) == 0) {
-                // the block free
-                bitmap_block->data[local_block_id / 8] |= bit_mask; // Mark block in use.
-                write_buf_to_disk(bitmap_block);
-                release_buf(bitmap_block);
-                set_block_to_zero(dev, base_block_id + local_block_id);
-                return base_block_id + local_block_id;
-            }
-        }
-        release_buf(bitmap_block);
-    }
-    panic("alloc_zeroed_block: out of blocks");
-    return 0;
-}
-
-
-// Allocate an inode on device dev.
-// Mark it as allocated by  giving it type `type`.
-// Returns an allocated and referenced inode.
-struct inode *
-alloc_disk_inode(uint dev, short type) {
-    int inum;
-    struct buf *bp;
-    struct dinode *disk_inode;
-
-    for (inum = 1; inum < sb.ninodes; inum++) {
-        bp = acquire_buf_and_read(dev, BLOCK_CONTAINING_INODE(inum, sb));
-        disk_inode = (struct dinode *)bp->data + inum % INODES_PER_BLOCK;
-        if (disk_inode->type == 0) {
-            // a free inode
-            memset(disk_inode, 0, sizeof(*disk_inode));
-            disk_inode->type = type;
-            write_buf_to_disk(bp);
-            release_buf(bp);
-            return iget(dev, inum);
-        }
-        release_buf(bp);
-    }
-    panic("ialloc: no inodes");
-    return 0;
-}
-
-void inode_table_init() {
-    init_spin_lock_with_name(&itable.lock, "itable");
-    for (int i = 0; i < NINODE; i++) {
-        init_mutex(&itable.inode[i].lock);
-    }
-}
-
-// Copy a modified in-memory inode to disk.
-// Must be called after every change to an ip->xxx field
-// that lives on disk.
-void iupdate(struct inode *ip) {
-    struct buf *bp;
-    struct dinode *dip;
-
-    bp = acquire_buf_and_read(ip->dev, BLOCK_CONTAINING_INODE(ip->inum, sb));
-    dip = (struct dinode *)bp->data + ip->inum % INODES_PER_BLOCK;
-    dip->type = ip->type;
-    dip->major = ip->major;
-    dip->minor = ip->minor;
-    dip->num_link = ip->num_link;
-    dip->size = ip->size;
-    memmove(dip->addrs, ip->addrs, sizeof(ip->addrs));
-    write_buf_to_disk(bp);
-    release_buf(bp);
-}
-
-// Find the inode with number inum on device dev
-// and return the in-memory copy. Does not read
-// it from disk.
-struct inode *
-iget(uint dev, uint inum) {
-    debugcore("iget");
-
-    struct inode *inode_ptr, *empty;
-    acquire(&itable.lock);
-    // Is the inode already in the table?
-    empty = nullptr;
-    for (inode_ptr = &itable.inode[0]; inode_ptr < &itable.inode[NINODE]; inode_ptr++) {
-        if (inode_ptr->ref > 0 && inode_ptr->dev == dev && inode_ptr->inum == inum) {
-            inode_ptr->ref++;
-            release(&itable.lock);
-            return inode_ptr;
-        }
-        if (empty == 0 && inode_ptr->ref == 0) // Remember empty slot.
-            empty = inode_ptr;
-    }
-
-    // Recycle an inode entry.
-    if (empty == nullptr)
-        panic("iget: no inodes");
-
-    inode_ptr = empty;
-    inode_ptr->dev = dev;
-    inode_ptr->inum = inum;
-    inode_ptr->ref = 1;
-    inode_ptr->valid = 0;
-    release(&itable.lock);
-    return inode_ptr;
-}
-
-// Drop a reference to an in-memory inode.
-// If that was the last reference, the inode table entry can
-// be recycled.
-// If that was the last reference and the inode has no links
-// to it, free the inode (and its content) on disk.
-// All calls to iput() must be inside a transaction in
-// case it has to free the inode.
-void iput(struct inode *ip) {
-    tracecore("iput");
-    acquire(&itable.lock);
-
-    if (ip->ref == 1 && ip->valid && ip->num_link == 0) {
-        // inode has no links and no other references: truncate and free.
-
-        // ip->ref == 1 means no other process can have ip locked,
-        // so this acquiresleep() won't block (or deadlock).
-        acquire_mutex_sleep(&ip->lock);
-
-        release(&itable.lock);
-
-        itrunc(ip);
-        ip->type = 0;
-        iupdate(ip);
-        ip->valid = 0;
-
-        release_mutex_sleep(&ip->lock);
-
-        acquire(&itable.lock);
-    }
-
-    ip->ref--;
-    release(&itable.lock);
-}
-
-// Increment reference count for ip.
-// Returns ip to enable ip = idup(ip1) idiom.
-struct inode *
-idup(struct inode *ip) {
-    kernel_assert(ip != nullptr, "inode can not be nullptr");
-    acquire(&itable.lock);
-    ip->ref++;
-    release(&itable.lock);
-    return ip;
-}
-
-
-
-// Common idiom: unlock, then put.
-void iunlockput(struct inode *ip) {
-    iunlock(ip);
-    iput(ip);
-}
-
-
-
-// Reads the inode from disk if necessary.
-void ivalid(struct inode *ip) {
-    debugcore("ivalid");
-
-    struct buf *bp;
-    struct dinode *dip;
-    if (ip->valid == 0) {
-        bp = acquire_buf_and_read(ip->dev, BLOCK_CONTAINING_INODE(ip->inum, sb));
-        dip = (struct dinode *)bp->data + ip->inum % INODES_PER_BLOCK;
-        ip->type = dip->type;
-        ip->size = dip->size;
-        memmove(ip->addrs, dip->addrs, sizeof(ip->addrs));
-        release_buf(bp);
-        ip->valid = 1;
-        if (ip->type == 0)
-            panic("ivalid: no type");
-    }
-}
-
-
-
-
-// Read data from inode.
-// If user_dst==1, then dst is a user virtual address;
-// otherwise, dst is a kernel address.
-int readi(struct inode *ip, int user_dst, void *dst, uint off, uint n) {
-    // debugcore("readi");
-    uint tot, m;
-    struct buf *bp;
-
-    if (off > ip->size || off + n < off)
-        return 0;
-    if (off + n > ip->size)
-        n = ip->size - off;
-
-    for (tot = 0; tot < n; tot += m, off += m, dst += m) {
-        bp = acquire_buf_and_read(ip->dev, bmap(ip, off / BSIZE));
-        m = MIN(n - tot, BSIZE - off % BSIZE);
-        if (either_copyout((char *)dst, (char *)bp->data + (off % BSIZE), m, user_dst) == -1) {
-            release_buf(bp);
-            tot = -1;
-            break;
-        }
-        release_buf(bp);
-    }
-    return tot;
-}
-
-// Write data to inode.
-// Caller must hold ip->lock.
-// If user_src==1, then src is a user virtual address;
-// otherwise, src is a kernel address.
-// Returns the number of bytes successfully written.
-// If the return value is less than the requested n,
-// there was an error of some kind.
-int writei(struct inode *ip, int user_src, void *src, uint off, uint n) {
-    uint tot, m;
-    struct buf *bp;
-
-    if (off > ip->size || off + n < off)
-        return -1;
-    if (off + n > MAXFILE * BSIZE)
-        return -1;
-
-    for (tot = 0; tot < n; tot += m, off += m, src += m) {
-        bp = acquire_buf_and_read(ip->dev, bmap(ip, off / BSIZE));
-        m = MIN(n - tot, BSIZE - off % BSIZE);
-        if (either_copyin((char *)bp->data + (off % BSIZE), (char *)src, m, user_src) == -1) {
-            release_buf(bp);
-            break;
-        }
-        write_buf_to_disk(bp);
-        release_buf(bp);
-    }
-
-    if (off > ip->size)
-        ip->size = off;
-
-    // write the i-node back to disk even if the size didn't change
-    // because the loop above might have called bmap() and added a new
-    // block to ip->addrs[].
-    iupdate(ip);
-
-    return tot;
-}
-
-
-
-// Lock the given inode.
-// Reads the inode from disk if necessary.
-void ilock(struct inode *ip) {
-    struct buf *bp;
-    struct dinode *dip;
-
-    if (ip == 0 || ip->ref < 1)
-        panic("ilock");
-
-    acquire_mutex_sleep(&ip->lock);
-
-    if (ip->valid == 0) {
-        bp = acquire_buf_and_read(ip->dev, BLOCK_CONTAINING_INODE(ip->inum, sb));
-        dip = (struct dinode *)bp->data + ip->inum % INODES_PER_BLOCK;
-        ip->type = dip->type;
-        ip->major = dip->major;
-        ip->minor = dip->minor;
-        ip->num_link = dip->num_link;
-        ip->size = dip->size;
-        memmove(ip->addrs, dip->addrs, sizeof(ip->addrs));
-        release_buf(bp);
-        ip->valid = 1;
-        if (ip->type == 0) {
-            errorf("dev=%d, inum=%d", (int)ip->dev, (int)ip->inum);
-            panic("ilock: no type, this disk inode is invalid");
-        }
-    }
-}
-
-// Unlock the given inode.
-void iunlock(struct inode *ip) {
-    if (ip == nullptr || !holdingsleep(&ip->lock) || ip->ref < 1)
-        panic("iunlock");
-
-    release_mutex_sleep(&ip->lock);
-}
-
-
-
-
-struct inode *
-inode_by_name(char *path) {
-    char name[DIRSIZ];
-    return inode_or_parent_by_name(path, 0, name);
-}
-
-struct inode *
-inode_parent_by_name(char *path, char *name) {
-    return inode_or_parent_by_name(path, 1, name);
-}
-
-// Look up and return the inode for a path name.
-// If parent != 0, return the inode for the parent and copy the final
-// path element into name, which must have room for DIRSIZ bytes.
-// Must be called inside a transaction since it calls iput().
-static struct inode *
-inode_or_parent_by_name(char *path, int nameiparent, char *name) {
-    struct inode *ip, *next;
-    debugcore("inode_or_parent_by_name");
-    if (*path == '/') {
-        // absolute path
-        ip = iget(ROOTDEV, ROOTINO);
-    } else {
-        // relative path
-        ip = idup(curr_proc()->cwd);
-    }
-
-    while ((path = skipelem(path, name)) != 0) {
-        ilock(ip);
-        if (ip->type != T_DIR) {
-            iunlockput(ip);
-            return 0;
-        }
-        if (nameiparent && *path == '\0') {
-            // Stop one level early.
-            iunlock(ip);
-            return ip;
-        }
-        if ((next = dirlookup(ip, name, 0)) == 0) {
-            iunlockput(ip);
-            return 0;
-        }
-        iunlockput(ip);
-        ip = next;
-    }
-    if (nameiparent) {
-        iput(ip);
-        return 0;
-    }
-    return ip;
-}
-
-// Inode content
-//
-// The content (data) associated with each inode is stored
-// in blocks on the disk. The first NDIRECT block numbers
-// are listed in ip->addrs[].  The next NINDIRECT blocks are
-// listed in block ip->addrs[NDIRECT].
-
-// Return the disk block address of the nth block in inode ip.
-// If there is no such block, bmap allocates one.
-static uint
-bmap(struct inode *ip, uint bn) {
-    uint addr, *a;
-    struct buf *bp;
-
-    if (bn < NDIRECT) {
-        if ((addr = ip->addrs[bn]) == 0)
-            ip->addrs[bn] = addr = alloc_zeroed_block(ip->dev);
-        return addr;
-    }
-    bn -= NDIRECT;
-
-    if (bn < NINDIRECT) {
-        // Load indirect block, allocating if necessary.
-        if ((addr = ip->addrs[NDIRECT]) == 0)
-            ip->addrs[NDIRECT] = addr = alloc_zeroed_block(ip->dev);
-        bp = acquire_buf_and_read(ip->dev, addr);
-        a = (uint *)bp->data;
-        if ((addr = a[bn]) == 0) {
-            a[bn] = addr = alloc_zeroed_block(ip->dev);
-            write_buf_to_disk(bp);
-        }
-        release_buf(bp);
-        return addr;
-    }
-
-    panic("bmap: out of range");
-    return 0;
-}
-
-// Truncate inode (discard contents).
-// Caller must hold ip->lock.
-void itrunc(struct inode *ip) {
-    tracecore("itrunc");
-    int i, j;
-    struct buf *bp;
-    uint *a;
-
-    for (i = 0; i < NDIRECT; i++) {
-        if (ip->addrs[i]) {
-            free_disk_block(ip->dev, ip->addrs[i]);
-            ip->addrs[i] = 0;
-        }
-    }
-
-    if (ip->addrs[NDIRECT]) {
-        bp = acquire_buf_and_read(ip->dev, ip->addrs[NDIRECT]);
-        a = (uint *)bp->data;
-        for (j = 0; j < NINDIRECT; j++) {
-            if (a[j])
-                free_disk_block(ip->dev, a[j]);
-        }
-        release_buf(bp);
-        free_disk_block(ip->dev, ip->addrs[NDIRECT]);
-        ip->addrs[NDIRECT] = 0;
-    }
-
-    ip->size = 0;
-    iupdate(ip);
-}
-
-
-
-
-
-// Look for a directory entry in a directory.
-// If found, set *poff to byte offset of entry.
-struct inode *
-dirlookup(struct inode *dp, char *name, uint *poff)
-{
-    uint off, inum;
-    struct dirent de;
-
-    if (dp->type != T_DIR)
-        panic("dirlookup not DIR");
-
-    for (off = 0; off < dp->size; off += sizeof(de))
-    {
-        if (readi(dp, 0, &de, off, sizeof(de)) != sizeof(de))
-            panic("dirlookup read");
-        if (de.inum == 0)
-            continue;
-        if (namecmp(name, de.name) == 0)
-        {
-            // entry matches path element
-            if (poff)
-                *poff = off;
-            inum = de.inum;
-            return iget(dp->dev, inum);
-        }
-    }
-
-    return 0;
-}
-
-// Write a new directory entry (name, inum) into the directory dp.
-int dirlink(struct inode *dp, char *name, uint inum)
-{
-    int off;
-    struct dirent de;
-    struct inode *ip;
-    // Check that name is not present.
-    if ((ip = dirlookup(dp, name, 0)) != 0)
-    {
-        iput(ip);
-        return -1;
-    }
-
-    // Look for an empty dirent.
-    for (off = 0; off < dp->size; off += sizeof(de))
-    {
-        if (readi(dp, false, &de, off, sizeof(de)) != sizeof(de))
-            panic("dirlink read");
-        if (de.inum == 0)
-            break;
-    }
-    strncpy(de.name, name, DIRSIZ);
-    de.inum = inum;
-    if (writei(dp, false, &de, off, sizeof(de)) != sizeof(de))
-        panic("dirlink");
-    return 0;
-}
-
-
-// Copy stat information from inode.
-// Caller must hold ip->lock.
-void stati(struct inode *ip, struct stat *st)
-{
-    st->dev = ip->dev;
-    st->ino = ip->inum;
-    st->type = ip->type;
-    st->nlink = ip->num_link;
-    st->size = ip->size;
-}
-// Is the directory dp empty except for "." and ".." ?
-int isdirempty(struct inode *dp)
-{
-    int off;
-    struct dirent de;
-
-    for (off = 2 * sizeof(de); off < dp->size; off += sizeof(de))
-    {
-        if (readi(dp, 0, (void *)&de, off, sizeof(de)) != sizeof(de))
-            panic("isdirempty: readi");
-        if (de.inum != 0)
-            return 0;
-    }
-    return 1;
-}
-*/
