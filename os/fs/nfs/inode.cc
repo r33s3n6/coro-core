@@ -8,7 +8,7 @@
 
 #include "inode.h"
 
-// TODO: rw_lock
+
 namespace nfs {
 
 uint32 nfs_inode::cache_hit = 0;
@@ -16,13 +16,18 @@ uint32 nfs_inode::cache_miss = 0;
 
 
 nfs_inode::~nfs_inode() {
-    if(this->is_valid()) {
-        if (metadata.nlinks == 0) {
-            kernel_task_scheduler[0].schedule(((nfs*)fs)->drop_inode(inode_number));
-            return;
+    // ((nfs*)fs)->put_inode(inode_number);
+}
+
+void nfs_inode::on_destroy(weak_ptr<nfs_inode> self) {
+    {
+        auto ptr = self.lock();
+        if (ptr && ptr->flush_needed()) {
+            debugf("nfs_inode::on_destroy: %d", ptr->inode_number);
+            kernel_task_scheduler[0].schedule(((nfs*)ptr->fs)->put_inode(ptr));
         }
     }
-    ((nfs*)fs)->put_inode(inode_number);
+    
 }
 
 void nfs_inode::print(){
@@ -542,9 +547,18 @@ task<int32> nfs_inode::unlink(shared_ptr<dentry> old_dentry) {
                     auto inode_ref = *co_await old_inode->get_ref();
                     
                     if (--inode_ref->metadata.nlinks == 0){
-                        co_await old_inode->truncate(0);
+                        co_await inode_ref->truncate(0);
+                        co_await inode_ref->flush();
+                        co_await ((nfs*)fs)->free_inode(inode_ref->inode_number);
+                        inode_ref->mark_invalid();
+                        inode_ref->mark_clean();
+
+                    }else{
+                        inode_ref->mark_dirty();
                     }
-                    inode_ref->mark_dirty();
+
+                    
+                    
                 }
 
 

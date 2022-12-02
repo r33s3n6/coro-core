@@ -4,6 +4,10 @@
 #include <atomic/lock.h>
 #include <type_traits>
 
+
+
+
+
 struct ref_count_t {
     uint32 ref_count;
     uint32 weak_count;
@@ -41,17 +45,32 @@ struct ref_count_t {
     }
 
     // used by try_detach_weak
-    bool try_dec_ref(){
+    // first bool: if detach is successful
+    // second bool: if ref_count is to be destroyed
+    std::pair<bool,bool> try_dec_ref(){
         auto guard = make_lock_guard(lock);
-        if(ref_count > 1) return false;
+        if(ref_count > 1) return {false, false};
         ref_count--;
         weak_count--;
-        return true;
+        return {true, weak_count==0};
     }
+
 };
 
 template <typename T>
 class weak_ptr;
+
+template <typename T, typename = void>
+struct has_on_destroy_fn
+    : std::false_type
+{};
+
+
+template <typename T>
+struct has_on_destroy_fn<T,
+    std::void_t<decltype(std::declval<T>().on_destroy(std::declval<weak_ptr<T>>()))>>
+    : std::true_type
+{};
 
 template <typename T>
 class shared_ptr {
@@ -158,7 +177,11 @@ class shared_ptr {
 
     bool try_detach_weak() {
         if (ptr && ref_count) {
-            if (ref_count->try_dec_ref()) {
+            auto [detach, destroy] = ref_count->try_dec_ref();
+            if (detach) {
+                if (destroy) {
+                    delete ref_count;
+                }
                 ref_count = new ref_count_t(1);
                 return true;
             }
@@ -176,6 +199,13 @@ class shared_ptr {
     private:
     void __dec_ref() {
         if (ptr && ref_count) {
+            
+            if constexpr (has_on_destroy_fn<T>::value) {
+                if (try_detach_weak()) { // detach old ptr
+                    ptr->on_destroy(get_weak());
+                }
+            } 
+
             auto [ref,weak] = ref_count->dec_ref();
             if (!ref) {
                 delete ptr;
@@ -183,6 +213,8 @@ class shared_ptr {
             if (!weak) {
                 delete ref_count;
             }
+
+
         }
     }
     void __inc_ref() {

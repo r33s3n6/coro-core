@@ -71,6 +71,7 @@ task<void> nfs::mount(device_id_t _device_id) {
     sb = *temp_sb;
 
     unmounted = false;
+    wait_count = -1;
     sb_dirty = false;
 
     
@@ -82,6 +83,9 @@ task<void> nfs::mount(device_id_t _device_id) {
     kernel_assert(root_dentry != nullptr, "nfs: root dentry is null");
 
     inode_table = make_shared<nfs_inode>(this, INODE_TABLE_NUMBER);
+
+    
+
     co_return task_ok;
 }
 
@@ -106,25 +110,24 @@ task<void> nfs::unmount() {
 
     
     int32 failed_count;
-    do {
-        failed_count = *co_await kernel_inode_cache.destroy(this, -1);
-    } while (failed_count > 0);
+    failed_count = *co_await kernel_inode_cache.destroy(this, -1);
 
-    // this lock is meant for race from put_inode
-    //while (failed_count) {
-        //lock.lock();
-        //no_ref_count = 0;
-        //wait_count = failed_count;
-        //warnf("nfs: waiting for %d inodes to be released", failed_count);
-         // TODO: this is not good
-        //while(no_ref_count != failed_count) {
-        //    lock.unlock();
-        //    // co_await no_ref_wait_queue.done(lock);
-        //    co_await kernel_inode_cache.destroy(this, -1);
-        //    lock.lock();
-        //}
-        //lock.unlock();
-    //}
+    // do {
+    //     failed_count = *co_await kernel_inode_cache.destroy(this, -1);
+    // } while (failed_count > 0);
+
+    //this lock is meant for race from put_inode
+    if (failed_count) {
+        lock.lock();
+        no_ref_count = 0;
+        wait_count = failed_count;
+        warnf("nfs: waiting for %d inodes to be released", failed_count);
+
+        while(no_ref_count != failed_count) {
+           co_await no_ref_wait_queue.done(lock);
+        }
+        lock.unlock();
+    }
     
     
 
@@ -432,14 +435,25 @@ task<nfs::inode_ptr_t> nfs::get_inode(uint32 inode_number) {
     co_return inode_ptr;
 }
 
+// called when inode destruct
+task<void> nfs::put_inode(inode_ptr_t inode_ptr){ 
+
+    co_await inode_ptr->flush();
+
+    __put_inode(inode_ptr->inode_number);
+    co_return task_ok;
+
+}
+
 
 // called when inode destruct
-void nfs::put_inode(uint32 inode_number){ 
+void nfs::__put_inode(uint32 inode_number){ 
     (void)(inode_number);
-    lock.lock();
+    
 
+    auto guard = make_lock_guard(lock);
 
-    if (unmounted) {
+    if (unmounted && wait_count != -1) {
         no_ref_count++;
 
         if (no_ref_count == wait_count) {
@@ -447,19 +461,9 @@ void nfs::put_inode(uint32 inode_number){
         }
     }
 
-    lock.unlock();
-
 }
 
 
-
-task<void> nfs::drop_inode(uint32 inode_number){
-    co_await free_inode(inode_number);
-
-    put_inode(inode_number);
-
-    co_return task_ok;
-}
 
 } // namespace nfs
 

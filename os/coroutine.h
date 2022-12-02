@@ -115,7 +115,7 @@ struct task_base : noncopyable, sleepable {
     }
 
     void clear_owner() {
-        _owner = false;
+        _owner = false; 
     }
 
     void sleep() {
@@ -452,9 +452,15 @@ struct task_scheduler {
             task_base buf = std::move(h); // take the ownership of the coroutine
             h = __task_executor((promise<void>*)buf.get_promise());
         }
-       
-        h.get_promise()->self_scheduler = this;
-        _task_queue->push(std::move(h));
+
+        __schedule(std::move(h));
+
+    }
+
+    void __schedule(task_base&& h) {
+        task_base buf = std::move(h);
+        buf.get_promise()->self_scheduler = this;
+        _task_queue->push(std::move(buf));
     }
 
     bool is_free() { return _task_queue->empty(); }

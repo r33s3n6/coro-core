@@ -31,8 +31,8 @@ class nfs : public filesystem {
     task<void> free_inode(uint32 inode_index);
 
     task<inode_ptr_t> get_inode(uint32 inode_number);
-    task<void> drop_inode(uint32 inode_number);
-    void put_inode(uint32 inode_number);
+    void __put_inode(uint32 inode_number);
+    task<void> put_inode(inode_ptr_t inode_ptr);
 
     static task<void> make_fs(device_id_t device_id, uint32 nblocks);
 

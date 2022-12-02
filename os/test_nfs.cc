@@ -265,6 +265,8 @@ task<void> test_nfs_coro(device_id_t device_id) {
 
     co_await test_nfs2_coro(device_id);
 
+    debugf("test_nfs: ok");
+
     co_return task_ok;
 
 }

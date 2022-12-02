@@ -164,6 +164,7 @@ public:
                     flush_list.merge(buffer_list, old_it);
                 } else {
                     // we failed
+                    buffer_list.erase(old_it);
                     failed_count++;
                 }
             }

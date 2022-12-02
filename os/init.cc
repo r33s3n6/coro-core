@@ -105,7 +105,7 @@ void init(){
 
     // kernel_process_queue.push(test_disk_rw_proc);
 
-    kernel_process_queue.push(test_nfs_proc);
+    kernel_process_queue.push(test_nfs2_proc);
 
     
 

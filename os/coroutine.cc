@@ -58,7 +58,7 @@ task<void> __task_executor(promise<void>* p) {
 
 void task_base::wake_up(){
     if(_promise->self_scheduler){
-        _promise->self_scheduler->schedule(get_ref());
+        _promise->self_scheduler->__schedule(get_ref());
     } else {
         kernel_task_queue.push(get_ref());
     }
@@ -98,12 +98,15 @@ void task_queue::push(task_base&& proc) {
 
 void task_scheduler::start() {
     while (true) {
-
+        uint64 count = 0;
         
         task_base t = _task_queue->pop();
         if (!t) {
-            // debugf("task_scheduler: no task to run, yield");
-
+            debugf("task_scheduler: no task to run, yield");
+            count++;
+            if ( count % 1024 == 0) {
+                debugf("task_scheduler: no task to run, yield");
+            }
             cpu::my_cpu()->yield();
             // TODO replace with sleep
 
@@ -112,13 +115,13 @@ void task_scheduler::start() {
         }
 
         
-        // debug_core("task_scheduler: try to switch to %p\n", t.get_promise());
+        debug_core("task_scheduler: try to switch to %p\n", t.get_promise());
         // printf("scheduler: task status: %d\n", t.get_promise()->get_status());
         kernel_assert(cpu::local_irq_on(), "task_scheduler: irq off");
         // all tasks we own, we start it here
         t.resume();
 
-        // debugf("task_scheduler: switch done");
+        debugf("task_scheduler: switch done");
         // we do not track the status of tasks
 
     }

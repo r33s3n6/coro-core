@@ -21,3 +21,5 @@ utils
 
 destructor just add coroutine to task_queue
 
+flush inode when destruct, now drop inode is not safe when unmounting
+

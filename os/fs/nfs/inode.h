@@ -34,6 +34,8 @@ class nfs_inode : public inode {
     // sync from disk to memory
     virtual task<int32> __load() override;
     virtual task<int32> __flush() override;
+
+    static void on_destroy(weak_ptr<nfs_inode> self);
     
     // virtual task<void> put() override;
 

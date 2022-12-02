@@ -147,9 +147,16 @@ public:
         _dirty = true;
     }
 
+    void mark_clean() {
+        _dirty = false;
+    }
 
     bool is_dirty() const {
         return _dirty;
+    }
+
+    bool flush_needed() const {
+        return _valid && _dirty;
     }
 
     void mark_invalid() {

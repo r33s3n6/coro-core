@@ -318,7 +318,7 @@ extern logger::log_color debug_core_color[];
 
 #define __console_debugf(with_lock,fmt, ...) kernel_console_logger.printf<with_lock>(logger::log_level::DEBUG, fmt "\n", ##__VA_ARGS__)
 #define __debugf(fmt, ...) __console_debugf(false, fmt, ##__VA_ARGS__)
-#define debugf(fmt, ...) __console_debugf(true, fmt, ##__VA_ARGS__)
+// #define debugf(fmt, ...) __console_debugf(true, fmt, ##__VA_ARGS__)
 
 #define __console_debug_core(with_lock, fmt, ...)                                                                                   \
     do {                                                                                                      \
@@ -328,6 +328,8 @@ extern logger::log_color debug_core_color[];
 
 #define __debug_core(fmt, ...) __console_debug_core(false, fmt, ##__VA_ARGS__)
 #define debug_core(fmt, ...) __console_debug_core(true, fmt, ##__VA_ARGS__)
+
+#define debugf(fmt, ...) debug_core(fmt, ##__VA_ARGS__)
 
 #define __console_phex(with_lock, var_name) __console_debugf(with_lock, #var_name "=%p", var_name)
 #define __phex(var_name) __console_phex(false, var_name)
