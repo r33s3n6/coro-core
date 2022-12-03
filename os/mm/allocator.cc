@@ -46,12 +46,13 @@ void* operator new(std::size_t size) {
         panic("operator new: size > 1024");
     }
 
-    if (size == 1) {
-        return kernel_heap_allocator_8.alloc();
-    }
 
     void* ptr = nullptr;
-    switch (log2_64(size-1)) {
+
+    if (size == 1) {
+        ptr = kernel_heap_allocator_8.alloc();
+    } else {
+        switch (log2_64(size-1)) {
         case 0:
         case 1:
         case 2:
@@ -80,14 +81,20 @@ void* operator new(std::size_t size) {
             break;
         default:
             warnf("new: size %d is too large", size);
-            return kernel_allocator.alloc_page();
+            ptr = kernel_allocator.alloc_page();
             // panic("new failed");
             break;
+        }
     }
 
-    if (((uint64)ptr & (PGSIZE-1)) == 0) {
-        panic("new: ptr is page-aligned");
-    }
+    
+    
+
+    // if (((uint64)ptr & (PGSIZE-1)) == 0) {
+    //     panic("new: ptr is page-aligned");
+    // }
+
+    // debugf("new: %d, %p", size, ptr);
 
     return ptr;
 }
@@ -106,11 +113,13 @@ void trace_delete(){
 
 
 void operator delete(void* ptr) {
+    // debugf("delete %p", ptr);
+
     if (((uint64)ptr & (PGSIZE-1)) == 0) {
         kernel_allocator.free_page(ptr);
         return;
     } 
-
+    
 
     uint16 size = *(uint16*)((uint64)ptr & ~(PGSIZE-1));
 

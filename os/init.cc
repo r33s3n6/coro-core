@@ -90,8 +90,8 @@ void idle(){
 void init(){
     infof("init: start");
 
-    // shared_ptr<process> test_proc = make_shared<kernel_process>(kernel_process_queue.alloc_pid(), (kernel_process::func_type)test_coroutine);
-    // test_proc->set_name("test_coroutine");
+    shared_ptr<process> test_proc = make_shared<kernel_process>(kernel_process_queue.alloc_pid(), (kernel_process::func_type)test_coroutine);
+    test_proc->set_name("test_coroutine");
     // kernel_process_queue.push(test_proc);
 
     shared_ptr<process> test_disk_rw_proc = make_shared<kernel_process>(kernel_process_queue.alloc_pid(), (kernel_process::func_type)test_disk_rw);
@@ -103,7 +103,7 @@ void init(){
     shared_ptr<process> test_nfs2_proc = make_shared<kernel_process>(kernel_process_queue.alloc_pid(), test_nfs2);
     test_nfs2_proc->set_name("test_nfs2");
 
-    // kernel_process_queue.push(test_disk_rw_proc);
+    //kernel_process_queue.push(test_disk_rw_proc);
 
     kernel_process_queue.push(test_nfs2_proc);
 

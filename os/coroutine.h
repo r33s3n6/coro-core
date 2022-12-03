@@ -232,6 +232,7 @@ struct promise : public promise_base {
                     // we are done and we have no caller, so we
                     // destroy ourself and go back to scheduler
                     //__printf("DEBUG: destroy promise :%p\n", t.get_promise());
+                    
                     t.get_handle().destroy();
                 }
                 // back to scheduler
@@ -437,6 +438,7 @@ public:
 struct task_scheduler {
     // std::deque<task_base> task_queue;
     task_queue* _task_queue;
+    bool return_on_idle = false;
 
     void schedule(task_base&& h) {
         // let them clear themselves on final_suspend

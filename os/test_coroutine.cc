@@ -186,7 +186,7 @@ task<int> test_stack_overflow2_generator(int x){
 task<void> test_stack_overflow2(int x){
     auto gen = test_stack_overflow2_generator(x);
     void* ptr1 = get_stack_pointer();
-    while(gen.get_promise()->get_status() == promise_base::status::suspend){
+    while(gen.get_promise()->get_status() != promise_base::status::done){
         co_await gen;
     }
 
@@ -376,11 +376,14 @@ int kernel_coroutine_test() {
     test_normal_generator(1000000);
 
     kernel_console_logger.printf("main: test scheduler start\n");
+    test_scheduler.return_on_idle = true;
     test_scheduler.start();
 
     kernel_console_logger.printf("main: test: %d\n", test);
     kernel_assert(test==39, "test should be 3+1+35");
     kernel_assert(test_coroutine_kill_ref==2, "test_coroutine_kill_ref should be 2");
+
+    debugf("kernel_coroutine_test: end");
     return test;
 }
 

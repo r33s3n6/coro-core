@@ -11,6 +11,7 @@
 #include <mm/utils.h>
 #include <utils/log.h>
 #include <utils/assert.h>
+#include <utils/bitmap.h>
 
 #include <fs/inode_cache.h>
 
@@ -24,35 +25,6 @@ void nfs::print() {
     , sb_dirty, sb.total_blocks, sb.total_generic_blocks, sb.used_generic_blocks, sb.ninodes, sb.generic_block_start, sb.next_free_bitmap, sb.inode_table.size, sb.inode_table.addrs[0], sb.inode_table.next_addr_block);
 }
 
-// size: number of elements in uint64[]
-uint32 bitmap_find_first_zero(const uint64 *bitmap, uint32 size) {
-    uint32 i;
-    for (i = 0; i < size; i++) {
-        if (bitmap[i] != ~(0uL)) 
-            break;
-    }
-    if (i == size)
-        return -1;
-
-    uint32 j;
-    for (j = 0; j < 64; j++) {
-        if (!(bitmap[i] & (1uL << j)))
-            break;
-    }
-    return i * 64 + j;
-}
-
-void bitmap_set(uint64 *bitmap, uint32 index) {
-    bitmap[index / 64] |= (1uL << (index % 64));
-}
-
-void bitmap_clear(uint64 *bitmap, uint32 index) {
-    bitmap[index / 64] &= ~(1uL << (index % 64));
-}
-
-uint32 bitmap_get(const uint64 *bitmap, uint32 index) {
-    return bitmap[index / 64] & (1uL << (index % 64));
-}
 
 task<void> nfs::mount(device_id_t _device_id) {
     auto bdev = device::get<block_device>(_device_id);
@@ -74,13 +46,13 @@ task<void> nfs::mount(device_id_t _device_id) {
     wait_count = -1;
     sb_dirty = false;
 
+        // Debug:
+    debugf("kernel_inode_cache size:%d", kernel_inode_cache.size());
+    debugf("kernel_dentry_cache size:%d", kernel_dentry_cache.size);
+
     
     root_inode = *co_await get_inode(ROOT_INODE_NUMBER);
     co_await kernel_dentry_cache.create(nullptr, "", root_inode);
-
-    // Debug:
-    auto root_dentry = root_inode->get_dentry().lock();
-    kernel_assert(root_dentry != nullptr, "nfs: root dentry is null");
 
     inode_table = make_shared<nfs_inode>(this, INODE_TABLE_NUMBER);
 

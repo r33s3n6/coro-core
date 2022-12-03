@@ -19,7 +19,6 @@ trap
 utils
 
 
-destructor just add coroutine to task_queue
-
-flush inode when destruct, now drop inode is not safe when unmounting
+free_inode when nlinks == 0
+seems that there's bug around test_nfs.cc, I'm not sure if it's the testcase or the code
 

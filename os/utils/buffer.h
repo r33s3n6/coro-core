@@ -122,7 +122,7 @@ public:
     }
 
     task<void> flush() {
-        if (_dirty) {
+        if (_valid && _dirty) {
             co_await __get_derived().__flush();
             _dirty = false;
         }

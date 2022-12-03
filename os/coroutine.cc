@@ -48,8 +48,6 @@ task<void> __task_executor(promise<void>* p) {
 
     co_await t;
 
-    
-
     if (p->get_status() == promise_base::fail) {
         co_warnf("task_executor failed");
     } 
@@ -98,14 +96,12 @@ void task_queue::push(task_base&& proc) {
 
 void task_scheduler::start() {
     while (true) {
-        uint64 count = 0;
+        
         
         task_base t = _task_queue->pop();
         if (!t) {
-            debugf("task_scheduler: no task to run, yield");
-            count++;
-            if ( count % 1024 == 0) {
-                debugf("task_scheduler: no task to run, yield");
+            if (return_on_idle) {
+                return;
             }
             cpu::my_cpu()->yield();
             // TODO replace with sleep
@@ -115,13 +111,13 @@ void task_scheduler::start() {
         }
 
         
-        debug_core("task_scheduler: try to switch to %p\n", t.get_promise());
+        // debug_core("task_scheduler: try to switch to %p\n", t.get_promise());
         // printf("scheduler: task status: %d\n", t.get_promise()->get_status());
         kernel_assert(cpu::local_irq_on(), "task_scheduler: irq off");
         // all tasks we own, we start it here
         t.resume();
 
-        debugf("task_scheduler: switch done");
+        // debugf("task_scheduler: switch done");
         // we do not track the status of tasks
 
     }

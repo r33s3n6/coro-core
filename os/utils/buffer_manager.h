@@ -24,7 +24,9 @@ public:
 
     buffer_manager() {}
 
-
+    uint64 size() {
+        return buffer_list.size();
+    }
 
     // try to find a buffer node in buffer list, if not found, create a new one
     // or reuse a node not in use

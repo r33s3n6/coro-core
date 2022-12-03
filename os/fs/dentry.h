@@ -85,7 +85,7 @@ class dentry_cache {
 
     task<shared_ptr<dentry>> __get_free_dentry(const quick_string_ref& name_ref, shared_ptr<dentry> parent);
 
-
+    public:
     uint32 size = 0;
     
     

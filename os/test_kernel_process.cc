@@ -651,6 +651,6 @@ void test_nfs(void*){
     
     // kernel_task_queue.push(test_make_nfs(ramdisk_id, 64 * 1024));
     //kernel_task_queue.push(test_make_nfs(virtio_disk_id, 64 * 1024));
-    kernel_task_scheduler[0].schedule(test_make_nfs(virtio_disk_id, 64 * 1024));
+    kernel_task_scheduler[0].schedule(std::move(test_make_nfs(virtio_disk_id, 1 * 1024)));
     // kernel_task_queue.push(test_make_nfs2(virtio_disk_id));
 }

@@ -196,19 +196,7 @@ task<void> dentry_cache::destroy() {
     for(uint32 i = 0; i < HASH_TABLE_SIZE; i++) {
         dentry_cache_entry& entry = hash_table[i];
         co_await entry.lock.lock();
-        for (auto it = entry.dentry_list.begin(); it != entry.dentry_list.end(); ++it) {
-            auto d = *it;
-            d->lock.lock();
-            uint32 ref_count = d->reference_count;
-            d->lock.unlock();
-
-            d->set_inode(nullptr);
-            size--;
-
-            if (ref_count != 0){
-                warnf("dentry '%s' still has %d references", d->name.data(), ref_count);
-            }
-        }
+        entry.dentry_list.clear();
         entry.lock.unlock();
     }
 

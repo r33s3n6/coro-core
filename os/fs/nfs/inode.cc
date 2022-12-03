@@ -24,7 +24,7 @@ void nfs_inode::on_destroy(weak_ptr<nfs_inode> self) {
         auto ptr = self.lock();
         if (ptr && ptr->flush_needed()) {
             debugf("nfs_inode::on_destroy: %d", ptr->inode_number);
-            kernel_task_scheduler[0].schedule(((nfs*)ptr->fs)->put_inode(ptr));
+            kernel_task_scheduler[0].schedule(std::move(((nfs*)ptr->fs)->put_inode(ptr)));
         }
     }
     
@@ -518,6 +518,7 @@ task<int32> nfs_inode::unlink(shared_ptr<dentry> old_dentry) {
     if (old_dentry->name.size() > MAX_NAME_LENGTH) {
         co_return -EINVAL;
     }
+    
 
     dirent _dirent;
     uint32 offset = 0;
@@ -545,13 +546,16 @@ task<int32> nfs_inode::unlink(shared_ptr<dentry> old_dentry) {
 
                 {
                     auto inode_ref = *co_await old_inode->get_ref();
+
+                    debugf("unlink(inner) '%s' (%d)", old_dentry->name.data(), inode_ref->inode_number);
                     
                     if (--inode_ref->metadata.nlinks == 0){
                         co_await inode_ref->truncate(0);
-                        co_await inode_ref->flush();
-                        co_await ((nfs*)fs)->free_inode(inode_ref->inode_number);
-                        inode_ref->mark_invalid();
-                        inode_ref->mark_clean();
+                        // co_await inode_ref->flush();
+                        // TODO: free inode
+                        // co_await ((nfs*)fs)->free_inode(inode_ref->inode_number);
+                        //inode_ref->mark_invalid();
+                        //inode_ref->mark_clean();
 
                     }else{
                         inode_ref->mark_dirty();

@@ -351,3 +351,16 @@ task<void> virtio_disk::disk_rw_done(int id) {
 1. 主要在忙造机，没有太多进展
 
 
+
+### 第十二周(11.28-12.4)
+
+#### 进展
+
+1. 把之前`inode`，`dentry`散乱的指针用智能指针改写了，`inode cache`,`block buffer cache`,使用了统一的缓存逻辑。
+2. 写了一些文件系统的测例
+3. 修bug，且还没修完
+
+
+
+
+

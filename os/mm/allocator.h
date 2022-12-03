@@ -7,6 +7,7 @@
 #include <arch/riscv.h>
 #include <utils/log.h>
 #include <utils/list.h>
+#include <utils/bitmap.h>
 
 #include "utils.h"
 
@@ -64,6 +65,7 @@ class allocator {
         if (((uint64)pa % PGSIZE) != 0 || (pa < start || pa >= end)) {
             panic("free_page");
         }
+
 
         {
             auto guard = make_lock_guard(lock);
@@ -137,7 +139,7 @@ struct heap_block_t {
         uint32 next_free_index = 0;
         heap_block_t* next_block = nullptr;
         heap_block_t* next_free_block = nullptr;
-        //heap_allocator<size>* allocator = nullptr;
+        uint8 free_map[PGSIZE/size/8];
 
     } info ;
     static constexpr int capacity = (PGSIZE - sizeof(__heap_block_info_t)) / size;
@@ -150,6 +152,8 @@ struct heap_block_t {
 
         (*(uint32*)data[capacity-1]) = -1;
 
+        memset(info.free_map, 0, sizeof(info.free_map));
+
     }
 
     void* alloc() {
@@ -157,8 +161,11 @@ struct heap_block_t {
             return nullptr;
         }
         void* ret = data[info.next_free_index];
+        bitmap_set((uint64*)info.free_map, info.next_free_index);
+
         info.next_free_index = (*(uint32*)ret);
         info.used++;
+
         return ret;
     }
 
@@ -167,6 +174,13 @@ struct heap_block_t {
         if (index >= capacity) {
             panic("free");
         }
+        if (!bitmap_get((uint64*)info.free_map, index)) {
+            debugf("free: %p, index: %d", ptr, index);
+            panic("double free || free unallocated memory");
+        }
+        bitmap_clear((uint64*)info.free_map, index);
+
+
         (*(uint32*)ptr) = info.next_free_index;
         info.next_free_index = index;
         info.used--;
