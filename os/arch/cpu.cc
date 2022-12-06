@@ -112,15 +112,23 @@ void cpu::yield() {
     // there's no need to save interrupt state,
     // because on next run, it will be set properly by scheduler
     kernel_assert(!cpu::local_irq_on(), "local_irq should be disabled when yield");
+
+    //void* ra0 = __builtin_return_address(0);
+    //debug_core("yield: ra[0]: %p", ra0);
+
     switch_back(get_kernel_process()->get_context());
 }
 
 void cpu::switch_back(context* current) {
     kernel_assert(
         !cpu::local_irq_on() || (cpu::local_irq_on() && !(r_sie() & SIE_STIE)),
-        "timer interrupt should be off");  // interrput is off
+        "timer interrupt should be off");  // interrupt is off
 
-    // debug_core("switch back");
+
+
+    // void* ra0 = __builtin_return_address(0);
+
+    // debug_core("switch back: ra[0]: %p", ra0);
     // saved_context.print();
     swtch(current, &saved_context);  // will goto scheduler()
 
@@ -131,13 +139,13 @@ void cpu::switch_back(context* current) {
 void cpu::save_context_and_switch_to(context* to) {
     kernel_assert(
         !cpu::local_irq_on() || (cpu::local_irq_on() && !(r_sie() & SIE_STIE)),
-        "timer interrupt should be off");  // interrput is off
+        "timer interrupt should be off");  // interrupt is off
 
     // debugf("save_context_and_switch_to: %p", to);
     // debugf("context: ra: %p, sp:%p, a0:%p", to->ra, to->sp, to->a0);
 
-    // debug_core("save_context_and_switch_to: %p", to);
-    // to->print();
+    //debug_core("save_context_and_switch_to: %p", to);
+    //to->print();
     swtch(&saved_context, to);
 
     // debug_core("switch_back: back to saved context");
@@ -148,7 +156,7 @@ void cpu::save_context_and_switch_to(context* to) {
 void cpu::save_context_and_run(std::function<void()> func) {
     kernel_assert(
         !cpu::local_irq_on() || (cpu::local_irq_on() && !(r_sie() & SIE_STIE)),
-        "timer interrupt should be off");  // interrput is off
+        "timer interrupt should be off");  // interrupt is off
 
     context temp_context;
     memset(&temp_context, 0, sizeof(context));

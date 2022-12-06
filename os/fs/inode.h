@@ -90,6 +90,8 @@ class inode : public referenceable_buffer<inode> {
         return this->fs == _fs && (this->inode_number == _inode_number || _inode_number == (uint32)(-1));
     }
 
+    void print();
+
 
 
 public:

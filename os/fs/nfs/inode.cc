@@ -264,10 +264,16 @@ task<int64> nfs_inode::data_rw(std::conditional_t<_write, const uint8 *, uint8*>
 }
 
 task<int64> nfs_inode::read(void *dest, uint64 offset, uint64 size) {
+    // make metadata valid
+    co_await load();
+
     co_return *co_await data_rw<false>((uint8*)dest, offset, size);
 
 }
 task<int64> nfs_inode::write(const void *src, uint64 offset, uint64 size) {
+    // make metadata valid
+    co_await load();
+
     int64 write_size = *co_await data_rw<true>((const uint8*)src, offset, size);
     if (offset + write_size > metadata.size) {
         metadata.size = offset + write_size;
@@ -293,6 +299,9 @@ task<int32> nfs_inode::truncate(int64 size) {
     if (size != 0) {
         co_return -1;
     }
+
+    // make metadata valid
+    co_await load();
 
     if (metadata.size == 0) {
         co_return 0;
@@ -392,6 +401,9 @@ task<int32> nfs_inode::create(shared_ptr<dentry> new_dentry) {
     if (new_dentry->name.size() > MAX_NAME_LENGTH) {
         co_return -EINVAL;
     }
+
+    // make metadata valid
+    co_await load();
     
 
     auto new_inode = *co_await ((nfs*)fs)->alloc_inode();
@@ -450,6 +462,9 @@ task<int32> nfs_inode::lookup(shared_ptr<dentry> new_dentry) {
 // generator
 task<shared_ptr<dentry>> nfs_inode::read_dir() {
 
+    // make metadata valid
+    co_await load();
+
     shared_ptr<dentry> this_dentry = this->this_dentry.lock();
 
     kernel_assert(this_dentry->get_inode().get() == this, "parent inode mismatch");
@@ -458,7 +473,7 @@ task<shared_ptr<dentry>> nfs_inode::read_dir() {
     dirent _dirent;
 
 
-    shared_ptr<dentry> d = nullptr;
+    
     
     while (true) {
         if (offset >= metadata.size) {
@@ -477,20 +492,12 @@ task<shared_ptr<dentry>> nfs_inode::read_dir() {
 
         {
             auto new_inode = *co_await ((nfs*)fs)->get_inode(_dirent.inode_number);
-
+            shared_ptr<dentry> d = nullptr;
             d = *co_await kernel_dentry_cache.get_or_create(this_dentry, _dirent.name, new_inode);
+            co_yield d;
         }
 
-
-
         
-
-        // shared_ptr<dentry> new_dentry = *co_await kernel_dentry_cache.create(this_dentry, _dirent.name, new_inode);
-// 
-        // co_await _fs->put_inode(new_inode);
-
-        co_yield d;
-
     }
 }
 
@@ -503,6 +510,9 @@ task<int32> nfs_inode::link(shared_ptr<dentry> old_dentry, shared_ptr<dentry> ne
     // if (!old_dentry->_inode) {
     //     co_await lookup(old_dentry);
     // }
+
+    // make metadata valid
+    co_await load();
 
     shared_ptr<nfs_inode> old_inode = (shared_ptr<nfs_inode>)old_dentry->get_inode();
 
@@ -518,13 +528,14 @@ task<int32> nfs_inode::unlink(shared_ptr<dentry> old_dentry) {
     if (old_dentry->name.size() > MAX_NAME_LENGTH) {
         co_return -EINVAL;
     }
-    
 
     dirent _dirent;
     uint32 offset = 0;
 
     // make metadata valid
     co_await load();
+
+    debugf("unlink '%s'", old_dentry->name.data());
 
     while (true) {
         if (offset >= metadata.size) {
@@ -551,6 +562,8 @@ task<int32> nfs_inode::unlink(shared_ptr<dentry> old_dentry) {
                     
                     if (--inode_ref->metadata.nlinks == 0){
                         co_await inode_ref->truncate(0);
+                        // inode_ref->mark_dirty();
+
                         // co_await inode_ref->flush();
                         // TODO: free inode
                         // co_await ((nfs*)fs)->free_inode(inode_ref->inode_number);
@@ -560,17 +573,10 @@ task<int32> nfs_inode::unlink(shared_ptr<dentry> old_dentry) {
                     }else{
                         inode_ref->mark_dirty();
                     }
-
-                    
-                    
                 }
-
-
 
                 _dirent.inode_number = 0;
                 co_await write(&_dirent, offset, sizeof(dirent));
-
-
 
                 co_return 0;
             }
@@ -589,6 +595,10 @@ task<int32> nfs_inode::mkdir(shared_ptr<dentry> new_dentry) {
     if (new_dentry->name.size() > MAX_NAME_LENGTH) {
         co_return -EINVAL;
     }
+
+
+    // make metadata valid
+    co_await load();
     
 
     auto new_inode = *co_await ((nfs*)fs)->alloc_inode();

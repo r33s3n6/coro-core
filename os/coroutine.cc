@@ -104,6 +104,7 @@ void task_scheduler::start() {
                 return;
             }
             cpu::my_cpu()->yield();
+
             // TODO replace with sleep
 
             // debugf("task_scheduler: yield done");

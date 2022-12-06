@@ -34,6 +34,7 @@ CXXFLAGS = -Wall -Wextra -Werror # lint
 CXXFLAGS += -Og -gdwarf-2 -fno-omit-frame-pointer -ggdb # debug
 CXXFLAGS += -fcoroutines -std=c++20 -fno-exceptions -fno-rtti -D HANDLE_MEMORY_ALLOC_FAIL# coroutine
 CXXFLAGS += -foptimize-sibling-calls 
+CXXFLAGS += -fstack-protector # stack protector
 CXXFLAGS += -D NCPU=$(CPUS) # cpu
 CXXFLAGS += -MD
 CXXFLAGS += -D MEMORY_DEBUG
@@ -42,7 +43,7 @@ CXXFLAGS += -ffreestanding -fno-common -nostdlib -lgcc -mno-relax
 CXXFLAGS += -Wno-error=write-strings -Wno-write-strings
 #CXXFLAGS += -freport-bug
 CXXFLAGS += $(INCLUDEFLAGS)
-CXXFLAGS += $(shell $(CXX) -fno-stack-protector -E -x c /dev/null >/dev/null 2>&1 && echo -fno-stack-protector)
+#CXXFLAGS += $(shell $(CXX) -fno-stack-protector -E -x c /dev/null >/dev/null 2>&1 && echo -fno-stack-protector)
 
 LOG ?= error
 

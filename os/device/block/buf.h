@@ -57,6 +57,8 @@ class block_buffer_node : public referenceable_buffer<block_buffer_node> {
         this->block_no = block_no;
         this->mark_invalid();
     }
+
+    void print();
     
     public:
 

@@ -461,7 +461,7 @@ bool kernel_process::run(){
         cpu_ref c = cpu::my_cpu();
         //debug_core("run kernel process %d, state=%d", pid, (int)_state);
 
-        // enable timer interrupt (but not enable interrupt)
+        // set stie, not set sie
         timer::set_next_timer();
         timer::start_timer_interrupt();
         

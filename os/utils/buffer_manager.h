@@ -190,6 +190,15 @@ public:
 
     }
 
+    void print(){
+        debugf("buffer_manager: size %d", buffer_list.size());
+        for (auto& node : buffer_list) {
+            if (node) {
+                node->print();
+            }
+        }
+    }
+
 };
 
 

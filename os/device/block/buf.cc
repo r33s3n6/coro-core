@@ -17,4 +17,8 @@ task<void> block_buffer_node::__flush() {
     co_return task_ok;
 }
 
+void block_buffer_node::print() {
+    debugf("block_buffer_node: block_no: %d, bdev: %p", block_no, bdev);
+}
+
 

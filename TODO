@@ -22,3 +22,6 @@ utils
 free_inode when nlinks == 0
 seems that there's bug around test_nfs.cc, I'm not sure if it's the testcase or the code
 
+read_dir & get_inode()->inode_number
+maybe related to dentry cache 
+

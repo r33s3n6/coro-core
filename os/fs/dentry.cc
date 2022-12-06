@@ -18,6 +18,10 @@ dentry::~dentry() {
 
 }
 
+void dentry::print(){
+    debugf("dentry: '%s', parent: %p, inode_ptr: %p\n", name.data(), parent, _inode ? _inode.get() : nullptr);
+}
+
 task<shared_ptr<dentry>> dentry_cache::__add(const quick_string_ref& name) {
     uint32 hash = name.hash();
     dentry_cache_entry& entry = hash_table[hash % HASH_TABLE_SIZE];
@@ -52,17 +56,11 @@ task<shared_ptr<dentry>> dentry_cache::__get_free_dentry(const quick_string_ref&
     }
 
     new_dentry->parent = parent;
-    new_dentry->reference_count = 1;
     new_dentry->lock.unlock();
         
     co_return new_dentry;
 }
 
-void dentry_cache::put(shared_ptr<dentry> dentry) {
-    dentry->lock.lock();
-    dentry->reference_count--;
-    dentry->lock.unlock();
-}
 
 task<shared_ptr<dentry>> dentry_cache::lookup(shared_ptr<dentry> parent, const quick_string_ref& name_ref) {
     uint32 hash = name_ref.hash();
@@ -74,7 +72,6 @@ task<shared_ptr<dentry>> dentry_cache::lookup(shared_ptr<dentry> parent, const q
         d->lock.lock();
         if ((strncmp(d->name.data(), name_ref.data(),name_ref.size()) == 0) && (d->parent == parent)) {
             entry.dentry_list.move_to_front(it);
-            d->reference_count++;
             d->lock.unlock();
             entry.lock.unlock();
             co_return d;
@@ -200,5 +197,20 @@ task<void> dentry_cache::destroy() {
         entry.lock.unlock();
     }
 
+    size = 0;
+
     co_return task_ok;
+}
+
+void dentry_cache::print() {
+    for(uint32 i = 0; i < HASH_TABLE_SIZE; i++) {
+        dentry_cache_entry& entry = hash_table[i];
+        for (auto it = entry.dentry_list.begin(); it != entry.dentry_list.end(); ++it) {
+            auto& d = *it;
+            if (d) {
+                d->print();
+            }
+            
+        }
+    }
 }

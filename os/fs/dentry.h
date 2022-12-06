@@ -27,7 +27,7 @@ class dentry {
 
     shared_ptr<dentry> parent = nullptr;
     
-    uint32 reference_count = 0;
+    // uint32 reference_count = 0;
     spinlock lock {"dentry.lock"};
     
     shared_ptr<inode> get_inode() {
@@ -35,6 +35,8 @@ class dentry {
     }
     
     ~dentry();
+
+    void print();
 
 private:
     friend class inode;
@@ -76,6 +78,8 @@ class dentry_cache {
     task<shared_ptr<dentry>> lookup(shared_ptr<dentry> parent, const quick_string_ref& name_ref);
 
     task<void> destroy();
+
+    void print();
     
     private:
     // return new dentry with lock held
@@ -87,6 +91,8 @@ class dentry_cache {
 
     public:
     uint32 size = 0;
+
+    
     
     
 };

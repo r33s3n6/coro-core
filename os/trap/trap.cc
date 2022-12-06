@@ -65,7 +65,10 @@ void kernel_interrupt_handler(uint64 scause, uint64 stval, uint64 sepc) {
     }
 
 }
-
+uint64 last_scause; 
+void __early_trace_exception(uint64 scause) {
+    last_scause = scause;
+}
 
 void kernel_exception_handler(uint64 scause, uint64 stval, uint64 sepc, uint64 sp) {
     switch (scause & 0xff) {
@@ -100,12 +103,15 @@ void kernel_exception_handler(uint64 scause, uint64 stval, uint64 sepc, uint64 s
         errorf("MachineEnvCall in kernel: %p, stval = %p sepc = %p\n", scause, stval, sepc);
         break;
     case InstructionPageFault:
+        __early_trace_exception(scause);
         errorf("InstructionPageFault in kernel: %p, stval = %p sepc = %p\n", scause, stval, sepc);
         break;
     case LoadPageFault:
+        __early_trace_exception(scause);
         errorf("LoadPageFault in kernel: %p, stval = %p sepc = %p\n", scause, stval, sepc);
         break;
     case StorePageFault:
+        __early_trace_exception(scause);
         errorf("StorePageFault in kernel: %p, stval = %p sepc = %p\n", scause, stval, sepc);
         break;
     default:

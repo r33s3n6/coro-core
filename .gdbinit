@@ -9,6 +9,12 @@ set riscv use-compressed-breakpoints yes
 # entry point
 break *0x1000
 # kernel exception trace
+b __trace_exception
 b __trace_exception__sret
+b __early_trace_exception
 b panic
 
+cont
+cont
+cont
+cont

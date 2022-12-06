@@ -20,3 +20,6 @@ void inode::set_dentry(shared_ptr<dentry> _dentry) {
     // }
 }
     
+void inode::print() {
+    debugf("inode: inode_number: %d, fs: %p", inode_number, fs);
+}

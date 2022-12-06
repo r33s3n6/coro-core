@@ -9,6 +9,8 @@
 
 #include <mm/allocator.h>
 
+#include <fs/inode_cache.h>
+
 uint64 a = 0;
 
 task<void> test_coro2(device_id_t) {
@@ -20,9 +22,9 @@ task<void> test_coro(void* arg) {
     debugf("test_nfs");
 
     {
-        debugf("call test_nfs3_coro");
+        debugf("call test_coro2");
         co_await test_coro2({});
-        debugf("test_nfs3_coro: done");
+        debugf("test_coro2: done");
     }
 
     volatile uint64* ptr = (volatile uint64*)arg;
@@ -35,6 +37,8 @@ task<void> test_coro(void* arg) {
 
 task<void> test_nfs2_coro(device_id_t device_id) {
     nfs::nfs test_fs2;
+
+    // (void)(test_fs2);
     co_await test_fs2.mount(device_id);
     {
         shared_ptr<dentry> file_dentry3_2 =
@@ -60,24 +64,37 @@ task<void> test_nfs2_coro(device_id_t device_id) {
         debugf("test_nfs_coro: root: '%s' %d", root->name.data(),
                root->get_inode()->inode_number);
 
-        debugf("iterate root dir...");
-        // read dir
-        {
-            auto dir_iterator = root->get_inode()->read_dir();
+        for (int i=0;i<100;i++) {
+            debugf("iterate root dir...");
+            // read dir
+            {
+                auto dir_iterator = root->get_inode()->read_dir();
 
-            int count = 0;
-            while (auto dentry = *co_await dir_iterator) {
-                debugf("test_nfs_coro: read dir: %s %d", dentry->name.data(),
-                       dentry->get_inode()->inode_number);
-                count++;
+                int count = 0;
+                while (auto dentry = *co_await dir_iterator) {
+                    debugf("test_nfs_coro: read dir: %s %d", dentry->name.data(),
+                           dentry->get_inode()->inode_number);
+                    count++;
+                }
             }
         }
+
 
     }
 
     co_await test_fs2.unmount();
 
     co_return task_ok;
+}
+
+task<shared_ptr<uint32>> test_generator(uint32 start) {
+    
+    for (int i=0;i<10;i++) {
+        shared_ptr<uint32> ptr = nullptr;
+        ptr = make_shared<uint32>(start + i);
+        co_yield ptr;
+    }
+    co_yield nullptr;
 }
 
 task<void> test_nfs_coro_unit(device_id_t device_id) {
@@ -133,7 +150,7 @@ task<void> test_nfs_coro_unit(device_id_t device_id) {
 
         {
             auto file_inode_ref = *co_await file_inode->get_ref();
-            kernel_dentry_cache.put(file_dentry);
+            // kernel_dentry_cache.put(file_dentry);
 
             int64 write_size =
                 *co_await file_inode_ref->write("hello world", 0, 12);
@@ -151,7 +168,7 @@ task<void> test_nfs_coro_unit(device_id_t device_id) {
         file_inode = file_dentry2->get_inode();
         {
             auto file_inode_ref = *co_await file_inode->get_ref();
-            kernel_dentry_cache.put(file_dentry2);
+            // kernel_dentry_cache.put(file_dentry2);
 
             auto metadata2 = *co_await file_inode_ref->get_metadata();
             kernel_assert(metadata2->type == inode::ITYPE_FILE,
@@ -210,14 +227,50 @@ task<void> test_nfs_coro_unit(device_id_t device_id) {
 
         // =========
 
+        {
+            auto test_iter = test_generator(5);
+            int count =0;
+            while (auto result = *co_await test_iter) {
+                debugf("test_nfs_coro: test_iter: %d", *result);
+                count++;
+            }
+            kernel_assert(count == 10, "test_nfs_coro: count != 5");
+        }
+
+                {
+            auto test_iter = test_generator(5);
+            int count =0;
+            while (auto result = *co_await test_iter) {
+                debugf("test_nfs_coro2: test_iter: %d", *result);
+                count++;
+            }
+            kernel_assert(count == 10, "test_nfs_coro: count != 5");
+        }
+
         // read dir
         {
             auto dir_iterator = dir_inode->read_dir();
 
             int count = 0;
             while (auto dentry = *co_await dir_iterator) {
+                auto inode = dentry->get_inode();
                 debugf("test_nfs_coro: read dir: %s %d", dentry->name.data(),
-                       dentry->get_inode()->inode_number);
+                       inode->inode_number);
+                count++;
+            }
+
+            kernel_assert(count == 2, "test_nfs_coro: count != 2");
+        }
+
+        // read dir2
+        {
+            auto dir_iterator = dir_inode->read_dir();
+
+            int count = 0;
+            while (auto dentry = *co_await dir_iterator) {
+                auto inode = dentry->get_inode();
+                debugf("test_nfs_coro: read dir2: %s %d", dentry->name.data(),
+                       inode->inode_number);
                 count++;
             }
 
@@ -238,13 +291,15 @@ task<void> test_nfs_coro_unit(device_id_t device_id) {
 
             int count = 0;
             while (auto dentry = *co_await dir_iterator) {
+                auto inode = dentry->get_inode();
                 debugf("test_nfs_coro: read dir: %s %d", dentry->name.data(),
-                       dentry->get_inode()->inode_number);
+                       inode->inode_number);
                 count++;
             }
 
             kernel_assert(count == 3, "test_nfs_coro: count != 3");
         }
+
 
         // test write linked file
         {
@@ -274,22 +329,39 @@ task<void> test_nfs_coro_unit(device_id_t device_id) {
             debugf("test_nfs_coro: buf2: %s", buf2);
         }
 
+            // test unlink file (delete file)
+        {
+            co_await dir_inode->unlink(file_dentry4);
+
+            auto dir_iterator = dir_inode->read_dir();
+ 
+            int count = 0;
+            while (auto dentry = *co_await dir_iterator) {
+                auto inode = dentry->get_inode();
+                debugf("test_nfs_coro: read dir: %s %d", dentry->name.data(),
+                       inode->inode_number);
+                count++;
+            }
+
+            kernel_assert(count == 2, "test_nfs_coro: count != 2");
+        }
+
         dir_inode->put();
-
-
-        kernel_dentry_cache.put(file_dentry3);
-        kernel_dentry_cache.put(dir_dentry);
 
     }
 
     co_await test_fs.unmount();
+
+    kernel_inode_cache.print();
+    kernel_dentry_cache.print();
+    kernel_block_buffer.print();
 
     debugf("test_nfs_coro: done");
 
     infof("inode inner cache: %d/%d", nfs::nfs_inode::cache_hit,
           nfs::nfs_inode::cache_miss);
 
-    // co_await test_nfs2_coro(device_id);
+    co_await test_nfs2_coro(device_id);
     co_await test_coro(&a);
     
     debugf("test_nfs: ok");
@@ -353,7 +425,7 @@ task<void> __test_nfs_coro(device_id_t device_id) {
 
     {
         auto file_inode_ref = *co_await file_inode->get_ref();
-        kernel_dentry_cache.put(file_dentry);
+        // kernel_dentry_cache.put(file_dentry);
 
         int64 write_size =
             *co_await file_inode_ref->write("hello world", 0, 12);
@@ -370,7 +442,6 @@ task<void> __test_nfs_coro(device_id_t device_id) {
     file_inode = file_dentry2->get_inode();
     {
         auto file_inode_ref = *co_await file_inode->get_ref();
-        kernel_dentry_cache.put(file_dentry2);
 
         auto metadata2 = *co_await file_inode_ref->get_metadata();
         kernel_assert(metadata2->type == inode::ITYPE_FILE,
@@ -492,7 +563,7 @@ task<void> __test_nfs_coro(device_id_t device_id) {
     // test unlink file (delete file)
     {
         co_await dir_inode->unlink(file_dentry4);
-        kernel_dentry_cache.put(file_dentry4);
+
 
         auto dir_iterator = dir_inode->read_dir();
 
@@ -510,8 +581,6 @@ task<void> __test_nfs_coro(device_id_t device_id) {
     dir_inode.reset();
     root_inode.reset();
 
-    kernel_dentry_cache.put(file_dentry3);
-    kernel_dentry_cache.put(dir_dentry);
 
     co_await test_fs.unmount();
 

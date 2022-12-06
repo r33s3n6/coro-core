@@ -125,9 +125,9 @@ struct task_base : noncopyable, sleepable {
     void wake_up();
 
    protected:
-    promise_type* _promise;
-    bool alloc_fail;
-    bool _owner;
+    promise_type* _promise = nullptr;
+    bool alloc_fail = true;
+    bool _owner = false;
     
 };
 
@@ -360,7 +360,8 @@ struct task : task_base {
         // only when we alloc failed, we are ready
         bool await_ready() { return this->alloc_fail; }
 
-        std::coroutine_handle<> await_suspend(task_base caller) {
+        std::coroutine_handle<> await_suspend(std::coroutine_handle<> h) {
+            task_base caller(*(std::coroutine_handle<promise_base>*)&h);
             promise_base* caller_promise = caller.get_promise();
             if (!p->self_scheduler) {
                 p->self_scheduler = caller_promise->self_scheduler;
@@ -452,14 +453,20 @@ struct task_scheduler {
         if(!h.get_promise()->caller){
             // we wrap the task with a task_executor
             task_base buf = std::move(h); // take the ownership of the coroutine
-            h = __task_executor((promise<void>*)buf.get_promise());
+            buf.clear_owner();
+            auto task = __task_executor((promise<void>*)buf.get_promise());
+            task.clear_owner();
+            h = std::move(task);
         }
+
+        h.clear_owner();
 
         __schedule(std::move(h));
 
     }
 
     void __schedule(task_base&& h) {
+        h.clear_owner();
         task_base buf = std::move(h);
         buf.get_promise()->self_scheduler = this;
         _task_queue->push(std::move(buf));
