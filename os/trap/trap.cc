@@ -118,6 +118,11 @@ void kernel_exception_handler(uint64 scause, uint64 stval, uint64 sepc, uint64 s
         errorf("Unknown exception in kernel: %p, stval = %p sepc = %p\n", scause, stval, sepc);
         break;
     }
+    // process* p = cpu::__my_cpu()->get_current_process();
+    // if (p) {
+    //     p->backtrace_coroutine();
+    // }
+
     __trace_exception(sp);
     panic("kernel exception");
 }

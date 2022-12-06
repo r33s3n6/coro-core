@@ -53,6 +53,15 @@ void process::pause(){
     cpu::__my_cpu()->switch_back(nullptr); // we don't save context, for stack is shared with other processes
 }
 
+
+void process::backtrace_coroutine() {
+    if(current_promise) {
+        current_promise->backtrace();
+    } else {
+        warnf("backtrace_coroutine: no current promise");
+    }
+}
+
 user_process::user_process(int pid){
     // we don't need to lock p->lock here
     this->pid = pid;

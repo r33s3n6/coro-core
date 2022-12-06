@@ -43,7 +43,8 @@ int log2_64 (uint64_t value)
 // TODO: failed when no memory
 void* operator new(std::size_t size) {
     if(size > 4096) {
-        panic("operator new: size > 1024");
+        warnf("operator new: size: %d", size);
+        panic("operator new: size > 4096");
     }
 
 

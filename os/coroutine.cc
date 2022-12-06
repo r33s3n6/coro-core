@@ -2,6 +2,8 @@
 #include <utils/log.h>
 #include <utils/assert.h>
 
+#include <arch/cpu.h>
+
 task_queue kernel_task_queue;
 task_scheduler kernel_task_scheduler[NCPU];
 
@@ -123,3 +125,73 @@ void task_scheduler::start() {
 
     }
 }
+
+void promise_base::backtrace() {
+    promise_base* current_promise = this;
+    void* current_await_address = (void*)r_sepc();
+
+    debugf("backtrace:");
+    while (current_promise) {
+        debugf("    %p: await at %p", current_promise, current_await_address);
+        if (!current_promise->caller) {
+            break;
+        }
+        current_await_address = current_promise->await_address;
+        current_promise = current_promise->caller.get_promise();
+    }
+
+}
+/*
+template <typename return_type>
+std::coroutine_handle<> task<return_type>::task_awaiter::await_suspend(std::coroutine_handle<> h) {
+    task_base caller(*(std::coroutine_handle<promise_base>*)&h);
+    promise_base* caller_promise = caller.get_promise();
+    
+    p->set_await_address(__builtin_return_address(0));
+    {
+        auto cpu_ref = cpu::my_cpu();
+        last_promise = cpu_ref->get_current_process()->set_promise(p);
+    }
+
+
+    if (!p->self_scheduler) {
+        p->self_scheduler = caller_promise->self_scheduler;
+    }
+
+    // if we are not set to no_yield, we take same settings as caller
+    if(!p->no_yield) {
+        p->no_yield = caller_promise->no_yield;
+    }
+
+    // we don't have the ownership of the caller
+    p->caller = std::move(caller);
+
+    p->set_running();
+
+    // resume ourselves, by tail call optimization, we will not create a new
+    // stack frame
+    return task::get_handle(p);
+}
+
+
+template <typename return_type>
+task<return_type>::ret_opt_type task<return_type>::task_awaiter::await_resume() {
+
+    // alloc_failed_task_shortcut
+    if (alloc_fail) {
+        return {};
+    }
+
+    if (p->get_status() == promise_base::fail) {
+        return {};
+    }
+
+    {
+        auto cpu_ref = cpu::my_cpu();
+        cpu_ref->get_current_process()->set_promise(last_promise);
+    }
+
+    return std::move(p->result);
+}
+
+*/

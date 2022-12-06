@@ -9,12 +9,14 @@
 #include <arch/riscv.h>
 #include <mm/layout.h>
 
-#include <coroutine.h>
+// #include <coroutine.h>
 #include <utils/panic.h>
+#include <utils/utility.h>
 
 
 #include <functional>
 
+class promise_base;
 
 class process;
 class user_process;
@@ -63,10 +65,9 @@ class cpu_ref;
 
 // Per-CPU state.
 class cpu {
-    process* current_process=nullptr;      // The process running on this cpu, or null.
-    context saved_context;               // swtch() here to enter thread_scheduler().
-    // int noff=0;                         // Depth of push_off() nesting.
-    // int base_interrupt_status = false;  // Were interrupts enabled before push_off()?
+    process* current_process = nullptr;         // The process running on this cpu, or null.
+    context saved_context;                      // swtch() here to enter scheduler().
+
     int core_id;
 
     uint8* temp_kstack;
@@ -82,7 +83,8 @@ class cpu {
     public:
     cpu(){}
     void init(int core_id);
-   public:
+
+    public:
     //
     // the riscv Platform Level Interrupt Controller (PLIC).
     //
@@ -154,9 +156,15 @@ class cpu {
         return (kernel_process*)current_process;
     }
 
+
     void set_process(process* p){
         current_process = p;
     }
+
+    promise_base* set_promise(promise_base* p);
+
+    void backtrace_coroutine();
+
     void yield();
     void switch_back(context* c);
     void save_context_and_run(std::function<void()> func);
@@ -173,7 +181,7 @@ class cpu {
 
 
     void __print();
-    task<void> print();
+    // task<void> print();
 
 
 

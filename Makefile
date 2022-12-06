@@ -37,7 +37,7 @@ CXXFLAGS += -foptimize-sibling-calls
 CXXFLAGS += -fstack-protector # stack protector
 CXXFLAGS += -D NCPU=$(CPUS) # cpu
 CXXFLAGS += -MD
-CXXFLAGS += -D MEMORY_DEBUG
+CXXFLAGS += -D MEMORY_DEBUG -D COROUTINE_TRACE
 CXXFLAGS += -mcmodel=medany
 CXXFLAGS += -ffreestanding -fno-common -nostdlib -lgcc -mno-relax
 CXXFLAGS += -Wno-error=write-strings -Wno-write-strings

@@ -19,7 +19,7 @@ void spinlock::lock() {
             logger::log_level::ERROR, 
             "lock \"%s\" is held by core %d, cannot be reacquired",
             _name, core_id);
-        panic("This cpu is acquiring a acquired lock");
+        __panic("This cpu is acquiring a acquired lock");
     }
 
     #ifdef SPINLOCK_TIMEOUT_CHECK
@@ -32,7 +32,7 @@ void spinlock::lock() {
             uint64 now = r_cycle();
             if(now-start > timer::SECOND_TO_CYCLE(3)) {
                 __errorf("timeout lock name: %s, hold by cpu %d", _name, id);
-                panic("spinlock timeout");
+                __panic("spinlock timeout");
             }
     #endif
         }
@@ -58,7 +58,7 @@ void spinlock::unlock() {
         kernel_console_logger.printf<false>(
                     logger::log_level::ERROR, 
                     "Error release lock: %s\n", _name);
-        panic("Try to release a lock when not holding it");
+        __panic("Try to release a lock when not holding it");
     }
 
 

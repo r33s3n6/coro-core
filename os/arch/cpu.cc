@@ -38,15 +38,15 @@ void cpu::init(int core_id) {
     __print();
 }
 
-task<void> cpu::print() {
-    co_await kernel_logger.printf<false>("* ---------- CPU INFO ----------\n");
-    co_await kernel_logger.printf<false>("* print by: %d\n", current_id());
-    co_await kernel_logger.printf<false>("* Core ID: %d\n", core_id);
-    co_await kernel_logger.printf<false>("* Current Process: %p\n",
-                                         current_process);
-    co_await kernel_logger.printf<false>(
-        "* ---------- CPU INFO ----------\n\n");
-}
+// task<void> cpu::print() {
+//     co_await kernel_logger.printf<false>("* ---------- CPU INFO ----------\n");
+//     co_await kernel_logger.printf<false>("* print by: %d\n", current_id());
+//     co_await kernel_logger.printf<false>("* Core ID: %d\n", core_id);
+//     co_await kernel_logger.printf<false>("* Current Process: %p\n",
+//                                          current_process);
+//     co_await kernel_logger.printf<false>(
+//         "* ---------- CPU INFO ----------\n\n");
+// }
 
 void cpu::__print() {
     kernel_console_logger.printf<false>("* ---------- CPU INFO ----------\n");
@@ -164,4 +164,36 @@ void cpu::save_context_and_run(std::function<void()> func) {
     temp_context.ra = (uint64)__function_caller;
     temp_context.a0 = (uint64)&func;
     swtch(&saved_context, &temp_context);
+}
+
+
+promise_base* cpu::set_promise(promise_base* p) {
+    return current_process? current_process->set_promise(p): nullptr;
+}
+
+
+void cpu::backtrace_coroutine() {
+    if (current_process) {
+        current_process->backtrace_coroutine();
+    }
+
+    // trace stack
+    debugf("backtrace stack:");
+    void* frame[16] {0};
+    void* ra[16] {0};
+    frame[ 0] = __builtin_frame_address(0);
+    ra   [ 0] = nullptr;
+    debugf("    %p: %p", frame[0], ra[0]);
+    for (int i = 1; i < 16; i++) {
+        if (frame[i-1] == nullptr) {
+            break;
+        }
+
+        frame[i] = *(((void**)frame[i-1])-2);
+        ra   [i] = *(((void**)frame[i-1])-1);
+        debugf("    %p: %p", frame[i], ra[i]);
+    }
+    
+    
+    debugf("backtrace stack done");
 }

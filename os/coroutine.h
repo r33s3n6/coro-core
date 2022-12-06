@@ -16,7 +16,14 @@
 #include <utils/list.h>
 
 #include <arch/config.h>
+#include <arch/cpu.h>
 #include <atomic/lock.h>
+
+#ifdef COROUTINE_TRACE
+#define COROUTINE_TRACE_NOINLINE __attribute__((noinline))
+#else
+#define COROUTINE_TRACE_NOINLINE
+#endif
 
 struct task_scheduler;
 
@@ -100,6 +107,11 @@ struct task_base : noncopyable, sleepable {
         static_assert(std::is_base_of_v<promise_type, T>);
     }
 
+    task_base(std::coroutine_handle<> h) noexcept
+        : _promise(&std::coroutine_handle<promise_type>::from_address(h.address()).promise()), alloc_fail(false), _owner(false) {
+
+    }
+
     explicit operator bool() const { return _promise != nullptr; }
 
     std::coroutine_handle<promise_type> get_handle() noexcept {
@@ -142,6 +154,8 @@ struct promise_base {
     // our caller, we resume it when we are done
     task_base caller {};
 
+    void* await_address = nullptr; // for back trace
+
     // where we schedule ourselves to
     task_scheduler* self_scheduler = nullptr;
 
@@ -158,6 +172,9 @@ struct promise_base {
     status get_status() const { return _status; }
     void set_fail() { _status = fail; }
     void set_running() { _status = running; }
+    void set_await_address(void* addr) { await_address = addr; }
+
+    void backtrace();
 
 #ifdef HANDLE_MEMORY_ALLOC_FAIL
     static task_fail_t get_return_object_on_allocation_failure();
@@ -358,11 +375,21 @@ struct task : task_base {
 
     struct task_awaiter {
         // only when we alloc failed, we are ready
-        bool await_ready() { return this->alloc_fail; }
+        bool COROUTINE_TRACE_NOINLINE await_ready() { return this->alloc_fail; }
 
         std::coroutine_handle<> await_suspend(std::coroutine_handle<> h) {
-            task_base caller(*(std::coroutine_handle<promise_base>*)&h);
+            task_base caller(h);
             promise_base* caller_promise = caller.get_promise();
+
+
+            // p->set_await_address(__builtin_return_address(0));
+
+            {
+                auto cpu_ref = cpu::my_cpu();
+                last_promise = cpu_ref->set_promise(p);
+            }
+
+
             if (!p->self_scheduler) {
                 p->self_scheduler = caller_promise->self_scheduler;
             }
@@ -393,6 +420,11 @@ struct task : task_base {
                 return {};
             }
 
+            {
+                auto cpu_ref = cpu::my_cpu();
+                cpu_ref->set_promise(last_promise);
+            }
+
             return std::move(p->result);
         }
         
@@ -402,12 +434,20 @@ struct task : task_base {
         promise_type* p;
         bool alloc_fail;
 
+        promise_base* last_promise = nullptr;
+
 
     };
 
     
 
-    task_awaiter operator co_await() noexcept {
+    task_awaiter COROUTINE_TRACE_NOINLINE operator co_await() noexcept {
+        #ifdef COROUTINE_TRACE
+        if (_promise) {
+            _promise->set_await_address(__builtin_return_address(0));
+        }
+        #endif
+        
         return {_promise, alloc_fail};
     }
     //opt_type&& await_resume() {

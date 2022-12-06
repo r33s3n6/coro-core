@@ -12,9 +12,8 @@ break *0x1000
 b __trace_exception
 b __trace_exception__sret
 b __early_trace_exception
-b panic
+b __trace_panic
 
-cont
 cont
 cont
 cont

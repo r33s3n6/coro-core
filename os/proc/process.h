@@ -23,6 +23,7 @@
 #define FD_MAX (16)
 #define PROC_NAME_MAX (16)
 
+class promise_base;
 
 class process : public sleepable {
 
@@ -35,6 +36,9 @@ class process : public sleepable {
     spinlock schedule_lock {"process.schedule_lock"};
 
     int binding_core = -1;        // -1 means no binding
+
+    promise_base* current_promise = nullptr;
+
 
 
 
@@ -94,6 +98,18 @@ protected:
     state get_state() const{
         return _state;
     }
+
+    promise_base* set_promise(promise_base* p){
+        auto old = current_promise;
+        current_promise = p;
+        return old;
+    }
+    promise_base* get_promise() const{
+        return current_promise;
+    }
+
+    void backtrace_coroutine();
+
 
     protected:
     virtual void __clean_resources() {};
