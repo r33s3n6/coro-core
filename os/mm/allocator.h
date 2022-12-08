@@ -269,51 +269,24 @@ class heap_allocator {
     spinlock lock;
 };
 
-/*
-template <int size>
+
+
+
 struct large_mem_info {
-    large_mem_info* next_free_info = nullptr;
-    large_mem_info* next_info = nullptr;
-    uint16 used = 0;
-    uint8 (*data)[size];
-    large_mem_info() {
-        data = (uint8(*)[size])kernel_allocator.alloc_page();
-    }
-    ~large_mem_info() {
-        if (data) {
-            kernel_allocator.free_page(data);
-        }
-    }
+    uint64 page_count;
 };
 
-template <int size>
 class large_mem_allocator {
     public:
     large_mem_allocator(){
-        static_assert(size >= 8 && size%8 ==0 && size >=256 && size <= 2048, "heap allocator size must be 8~1024 and multiple of 8");
     }
-    void* alloc() {
-        auto guard = make_lock_guard(lock);
-        void* ret = kernel_allocator.alloc_page();
-        if (ret == nullptr) {
-            return nullptr;
-        }
-        memset(ret, 0, PGSIZE);
-        return ret;
-    }
-    void free(void* ptr) {
-        auto guard = make_lock_guard(lock);
-        kernel_allocator.free_page(ptr);
-    }
-
-    void truncate() {
-        // do nothing
-    }
+    void* alloc(int size);
+    void free(void* ptr);
 
     private:
-    spinlock lock;
-    list<
+    uint64 vmem_top = VMEM_START;
+    spinlock lock {"large_mem_allocator.lock"};
 };
-*/
+
 
 #endif // MM_ALLOCATOR_H

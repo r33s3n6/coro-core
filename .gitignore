@@ -12,3 +12,4 @@ nfs/empty.img
 nfs/fs-copy.dump
 
 tmp
+qemu.log

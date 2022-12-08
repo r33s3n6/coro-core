@@ -7,7 +7,7 @@
 
 .data
 __exception_occurred:
-        .long 0
+        .zero 32
 
 .text
 .globl kernel_trap
@@ -63,6 +63,7 @@ kernel_vec:
         sd t6, 240(sp)
         
         mv a0, sp  
+        mv a1, fp
 	// call the C trap handler in trap.c
         call kernel_trap
 
@@ -109,22 +110,21 @@ kernel_ret:
 __trace_exception:
 
         .cfi_startproc
-        // check __exception_occurred, if __exception_occurred>=8, call shutdown
+        // if __exception_occurred, ret
+        la t0, __exception_occurred
+        add t0, t0, tp
+        lw t0, 0(t0)
+        beqz t0, __trace_exception__restore
 
-        // check __exception_occurred
-        lw t0, __exception_occurred
-        addi t0, t0, -8
-        slt t0, t0, zero // __exception_occurred<8
-        bnez t0, __trace_exception__restore
-
-        call shutdown
+        // call shutdown
+        ret
 
 __trace_exception__restore:
         // set __exception_occurred to 1
-        lw t0, __exception_occurred
-        addi t0, t0, 1
-        la t1, __exception_occurred
-        sd t0, 0(t1)
+        la t0, __exception_occurred
+        add t0, t0, tp
+        li t1, 1
+        sd t1, 0(t0)
 
         mv sp, a0
         // restore registers.

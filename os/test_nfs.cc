@@ -17,8 +17,10 @@ uint64 a = 0;
 
 task<void> test_coro2(device_id_t) {
     debugf("test_coro2: start");
-    panic("test panic");
-    
+    // panic("test panic");
+    // uint64* ptr = (uint64*)0x100uLL;
+    // uint64 val = *ptr;
+    // val = val;
     co_return task_ok;
 }
 
@@ -68,7 +70,7 @@ task<void> test_nfs2_coro(device_id_t device_id) {
         debugf("test_nfs_coro: root: '%s' %d", root->name.data(),
                root->get_inode()->inode_number);
 
-        for (int i=0;i<100;i++) {
+        for (int i=0;i<2;i++) {
             debugf("iterate root dir...");
             // read dir
             {
@@ -267,19 +269,19 @@ task<void> test_nfs_coro_unit(device_id_t device_id) {
         }
 
         // read dir2
-        // {
-        //     auto dir_iterator = dir_inode->read_dir();
+        {
+            auto dir_iterator = dir_inode->read_dir();
 
-        //     int count = 0;
-        //     while (auto dentry = *co_await dir_iterator) {
-        //         auto inode = dentry->get_inode();
-        //         debugf("test_nfs_coro: read dir2: %s %d", dentry->name.data(),
-        //                inode->inode_number);
-        //         count++;
-        //     }
+            int count = 0;
+            while (auto dentry = *co_await dir_iterator) {
+                auto inode = dentry->get_inode();
+                debugf("test_nfs_coro: read dir2: %s %d", dentry->name.data(),
+                       inode->inode_number);
+                count++;
+            }
 
-        //     kernel_assert(count == 2, "test_nfs_coro: count != 2");
-        // }
+            kernel_assert(count == 2, "test_nfs_coro: count != 2");
+        }
 
         // link file
         shared_ptr<dentry> file_dentry_link =
@@ -365,8 +367,8 @@ task<void> test_nfs_coro_unit(device_id_t device_id) {
     infof("inode inner cache: %d/%d", nfs::nfs_inode::cache_hit,
           nfs::nfs_inode::cache_miss);
 
-    // co_await test_nfs2_coro(device_id);
-    // co_await test_coro(&a);
+    co_await test_nfs2_coro(device_id);
+    co_await test_coro(&a);
     
     debugf("test_nfs: ok");
 
@@ -601,7 +603,7 @@ task<void> __test_nfs_coro(device_id_t device_id) {
 }
 
 void test_nfs2(void*) {
-    kernel_allocator.set_debug(true);
+    // kernel_allocator.set_debug(true);
     // kernel_task_queue.push(test_nfs_coro(virtio_disk_id));
 
     // kernel_task_scheduler[0].schedule(std::move(test_coro(&a)));

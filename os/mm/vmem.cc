@@ -268,6 +268,10 @@ void uvmunmap(pagetable_t pagetable, uint64 va, uint64 size, int do_free) {
 
 }
 
+void kvmunmap(pagetable_t kpgtbl, uint64 va, uint64 size, int do_free) {
+    uvmunmap(kpgtbl, va, size, do_free);
+}
+
 // create an empty user page table.
 // map trampoline page
 // returns 0 if out of memory.

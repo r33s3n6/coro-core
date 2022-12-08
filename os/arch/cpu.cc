@@ -11,8 +11,10 @@
 #include <trap/trap.h>
 
 #include <utils/assert.h>
+#include <utils/backtrace.h>
 
 #include <proc/process.h>
+
 
 cpu cpus[NCPU];
 
@@ -177,23 +179,5 @@ void cpu::backtrace_coroutine() {
         current_process->backtrace_coroutine();
     }
 
-    // trace stack
-    debugf("backtrace stack:");
-    void* frame[16] {0};
-    void* ra[16] {0};
-    frame[ 0] = __builtin_frame_address(0);
-    ra   [ 0] = nullptr;
-    debugf("    %p: %p", frame[0], ra[0]);
-    for (int i = 1; i < 16; i++) {
-        if (frame[i-1] == nullptr) {
-            break;
-        }
-
-        frame[i] = *(((void**)frame[i-1])-2);
-        ra   [i] = *(((void**)frame[i-1])-1);
-        debugf("    %p: %p", frame[i], ra[i]);
-    }
-    
-    
-    debugf("backtrace stack done");
+    print_backtrace();
 }

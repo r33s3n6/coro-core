@@ -6,6 +6,7 @@
 
 #include <utils/log.h>
 #include <utils/assert.h>
+#include <utils/backtrace.h>
 
 #include <device/device.h>
 #include <drivers/virtio/virtio_disk.h>
@@ -70,7 +71,7 @@ void __early_trace_exception(uint64 scause) {
     last_scause = scause;
 }
 
-void kernel_exception_handler(uint64 scause, uint64 stval, uint64 sepc, uint64 sp) {
+void kernel_exception_handler(uint64 scause, uint64 stval, uint64 sepc, uint64 sp, uint64 fp) {
     switch (scause & 0xff) {
     case InstructionMisaligned:
         errorf("InstructionMisaligned in kernel: %p, stval = %p sepc = %p\n", scause, stval, sepc);
@@ -103,33 +104,34 @@ void kernel_exception_handler(uint64 scause, uint64 stval, uint64 sepc, uint64 s
         errorf("MachineEnvCall in kernel: %p, stval = %p sepc = %p\n", scause, stval, sepc);
         break;
     case InstructionPageFault:
-        __early_trace_exception(scause);
+        //__early_trace_exception(scause);
         errorf("InstructionPageFault in kernel: %p, stval = %p sepc = %p\n", scause, stval, sepc);
         break;
     case LoadPageFault:
-        __early_trace_exception(scause);
+        //__early_trace_exception(scause);
         errorf("LoadPageFault in kernel: %p, stval = %p sepc = %p\n", scause, stval, sepc);
         break;
     case StorePageFault:
-        __early_trace_exception(scause);
+        //__early_trace_exception(scause);
         errorf("StorePageFault in kernel: %p, stval = %p sepc = %p\n", scause, stval, sepc);
         break;
     default:
         errorf("Unknown exception in kernel: %p, stval = %p sepc = %p\n", scause, stval, sepc);
         break;
     }
-    // process* p = cpu::__my_cpu()->get_current_process();
-    // if (p) {
-    //     p->backtrace_coroutine();
-    // }
+
 
     __trace_exception(sp);
+
+    
+    __print_backtrace((void*)(fp));
+
     panic("kernel exception");
 }
 
 // interrupts and exceptions from kernel code go here via kernelvec,
 // on whatever the current kernel stack is.
-extern "C" void kernel_trap(uint64 sp) {
+extern "C" void kernel_trap(uint64 sp, uint64 fp) {
     uint64 sepc = r_sepc();
     uint64 sstatus = r_sstatus();
     uint64 scause = r_scause();
@@ -144,7 +146,7 @@ extern "C" void kernel_trap(uint64 sp) {
     if (scause & (1ULL << 63)) { 
         kernel_interrupt_handler(scause, stval, sepc);
     } else {
-        kernel_exception_handler(scause, stval, sepc, sp);
+        kernel_exception_handler(scause, stval, sepc, sp, fp);
     } 
 
 

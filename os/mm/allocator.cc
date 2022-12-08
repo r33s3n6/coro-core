@@ -6,6 +6,9 @@
 #include <utils/log.h>
 #include <map>
 
+#include <utils/assert.h>
+#include "vmem.h"
+
 allocator kernel_allocator((void*)ekernel, (void*)IO_MEM_START);
 allocator kernel_io_allocator((void*)(IO_MEM_START + 2*PGSIZE), (void*)PHYSTOP); // first 2 pages are reserved for virtio disk
 
@@ -17,6 +20,8 @@ heap_allocator<128> kernel_heap_allocator_128;
 heap_allocator<256> kernel_heap_allocator_256;
 heap_allocator<512> kernel_heap_allocator_512;
 heap_allocator<1024> kernel_heap_allocator_1024;
+
+large_mem_allocator kernel_large_mem_allocator;
 
 const int tab64[64] = {
     63,  0, 58,  1, 59, 47, 53,  2,
@@ -42,13 +47,17 @@ int log2_64 (uint64_t value)
 
 // TODO: failed when no memory
 void* operator new(std::size_t size) {
+
+    void* ptr = nullptr;
+
     if(size > 4096) {
         warnf("operator new: size: %d", size);
-        panic("operator new: size > 4096");
+        ptr = kernel_large_mem_allocator.alloc(size);
+        // panic("operator new: size > 4096");
     }
 
 
-    void* ptr = nullptr;
+    
 
     if (size == 1) {
         ptr = kernel_heap_allocator_8.alloc();
@@ -83,19 +92,9 @@ void* operator new(std::size_t size) {
         default:
             warnf("new: size %d is too large", size);
             ptr = kernel_allocator.alloc_page();
-            // panic("new failed");
             break;
         }
     }
-
-    
-    
-
-    // if (((uint64)ptr & (PGSIZE-1)) == 0) {
-    //     panic("new: ptr is page-aligned");
-    // }
-
-    // debugf("new: %d, %p", size, ptr);
 
     return ptr;
 }
@@ -115,6 +114,12 @@ void trace_delete(){
 
 void operator delete(void* ptr) {
     // debugf("delete %p", ptr);
+
+    if ((uint64)(ptr) >= VMEM_START) {
+        kernel_large_mem_allocator.free(ptr);
+        return;
+    }
+
 
     if (((uint64)ptr & (PGSIZE-1)) == 0) {
         kernel_allocator.free_page(ptr);
@@ -172,3 +177,48 @@ void operator delete [](void* ptr, std::size_t size) {
 
 }
 
+
+void* large_mem_allocator::alloc(int size) {
+
+    auto guard = make_lock_guard(lock);
+    uint64 vaddr_start = vmem_top;
+    uint64 vaddr = vaddr_start;
+    int page_count = (size + sizeof(large_mem_info) + PGSIZE - 1) / PGSIZE;
+    large_mem_info* info = (large_mem_info*)vaddr_start;
+
+    int mapped_pages = 0;
+    for (;mapped_pages<page_count;mapped_pages++) {
+        void* page = kernel_allocator.alloc_page();
+        if (page == nullptr) {
+            goto fail;
+        }
+        kvmmap(kernel_pagetable, vaddr, (uint64)page, PGSIZE, PTE_W|PTE_R|PTE_X);
+        vaddr += PGSIZE;
+    }
+
+    vmem_top += page_count * PGSIZE;
+
+    info->page_count = page_count;
+
+    return (void*)(info+1);
+
+
+fail: // unmap and free pages
+    if (mapped_pages > 0) {
+        kvmunmap(kernel_pagetable, vaddr_start, mapped_pages*PGSIZE, 1);
+    }
+    return nullptr;
+        
+
+}
+
+void large_mem_allocator::free(void* ptr) {
+    // get info
+    
+    large_mem_info* info = (large_mem_info*)ptr;
+    info-=1;
+    kernel_assert(((uint64)info & (PGSIZE-1)) == 0, "large_mem_allocator::free: info is not page-aligned");
+    kernel_assert((uint64)info >= VMEM_START, "large_mem_allocator::free: info is not in kernel virtual map section");
+
+    kvmunmap(kernel_pagetable, (uint64)info, info->page_count * PGSIZE, 1);
+}
