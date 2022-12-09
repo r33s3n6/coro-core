@@ -7,6 +7,8 @@
 #include <fs/nfs/inode.h>
 #include <fs/nfs/nfs.h>
 
+#include <task_scheduler.h>
+
 int test = 0;
 int test2 = 0;
 

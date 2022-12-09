@@ -19,6 +19,7 @@
 #include <utils/assert.h>
 
 #include <coroutine.h>
+#include <task_scheduler.h>
 
 #include <drivers/virtio/virtio_disk.h>
 #include <drivers/ramdisk/ramdisk.h>

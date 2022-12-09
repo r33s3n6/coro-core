@@ -2,6 +2,8 @@
 #define UTILS_WAIT_QUEUE_H
 
 #include <utils/list.h>
+#include <atomic/spinlock.h>
+
 #include "sleepable.h"
 
 #include <coroutine.h>
@@ -48,6 +50,8 @@ class wait_queue_base {
     };
 
     virtual void sleep(sleepable* s) = 0;
+    // virtual int32 size();
+    void wait_done(sleepable* s, spinlock& lock);
     wait_queue_done done(spinlock& lock) {
         return {this, lock};
     }
@@ -79,6 +83,10 @@ class wait_queue : public wait_queue_base {
         }
     }
 
+    int32 size() {
+        return sleepers.size();
+    }
+
 };
 
 
@@ -99,6 +107,10 @@ class single_wait_queue : public wait_queue_base {
             sleeper->wake_up();
             sleeper = nullptr;
         }
+    }
+
+    int32 size() {
+        return sleeper ? 1 : 0;
     }
 
 

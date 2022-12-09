@@ -10,6 +10,7 @@ _entry:
     addi t0, a0, 1    # t0 = hartid + 1
     mul  t0, t0, t1    # 4K * (hartid + 1)
     add  sp, sp, t0  
+    mv   fp, x0        # fp = 0
     mv   tp, a0        # set hart id: tp = hartid 
     call kernel_init
 

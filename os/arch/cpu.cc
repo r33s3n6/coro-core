@@ -12,6 +12,7 @@
 
 #include <utils/assert.h>
 #include <utils/backtrace.h>
+#include <utils/wait_queue.h>
 
 #include <proc/process.h>
 
@@ -180,4 +181,11 @@ void cpu::backtrace_coroutine() {
     }
 
     print_backtrace();
+}
+
+void cpu::sleep(wait_queue_base* wq, spinlock& lock) {
+    kernel_assert(!cpu::local_irq_on(), "local_irq should be disabled");
+    kernel_assert(current_process, "current_process should not be null");
+    wq->wait_done(current_process, lock);
+    
 }

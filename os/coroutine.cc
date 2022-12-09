@@ -4,6 +4,8 @@
 
 #include <arch/cpu.h>
 
+#include <task_scheduler.h>
+
 task_queue kernel_task_queue;
 task_scheduler kernel_task_scheduler[NCPU];
 
@@ -75,56 +77,6 @@ task_fail_t promise_base::get_return_object_on_allocation_failure() {
 }
 #endif
 
-task_base task_queue::pop() {
-    auto guard = make_lock_guard(lock);
-
-    if(queue.empty()){
-        // debug_core("task_queue is empty");
-        return {};
-    }
-
-    task_base ret = std::move(queue.front());
-    queue.pop_front();
-
-
-    return ret;
-}
-
-void task_queue::push(task_base&& proc) {
-    auto guard = make_lock_guard(lock);
-    queue.push_back(std::move(proc));
-
-}
-
-void task_scheduler::start() {
-    while (true) {
-        
-        
-        task_base t = _task_queue->pop();
-        if (!t) {
-            if (return_on_idle) {
-                return;
-            }
-            cpu::my_cpu()->yield();
-
-            // TODO replace with sleep
-
-            // debugf("task_scheduler: yield done");
-            continue;
-        }
-
-        
-        // debug_core("task_scheduler: try to switch to %p\n", t.get_promise());
-        // printf("scheduler: task status: %d\n", t.get_promise()->get_status());
-        kernel_assert(cpu::local_irq_on(), "task_scheduler: irq off");
-        // all tasks we own, we start it here
-        t.resume();
-
-        // debugf("task_scheduler: switch done");
-        // we do not track the status of tasks
-
-    }
-}
 
 void promise_base::backtrace() {
     promise_base* current_promise = this;
@@ -141,6 +93,68 @@ void promise_base::backtrace() {
     }
 
 }
+
+task_base task_queue::try_pop() {
+    auto guard = make_lock_guard(lock);
+
+    if(queue.empty()){
+        // debug_core("task_queue is empty");
+        return {};
+    }
+
+    task_base ret = std::move(queue.front());
+    queue.pop_front();
+
+
+    return ret;
+}
+
+task_base task_queue::pop() {
+    lock.lock();
+
+    while(queue.empty()){
+        // debugf("task_queue: sleep");
+        cpu::my_cpu()->sleep(&wait_task_queue, lock);
+    }
+
+    task_base ret = std::move(queue.front());
+    queue.pop_front();
+    lock.unlock();
+
+    return ret;
+}
+
+void task_queue::push(task_base&& proc) {
+    auto guard = make_lock_guard(lock);
+    queue.push_back(std::move(proc));
+    // debugf("task_queue: wake up all (%d)(%d)", queue.size(), wait_task_queue.size());
+    wait_task_queue.wake_up_all();
+
+}
+
+void task_scheduler::start() {
+    while (true) {
+        
+
+        task_base t = return_on_idle ? _task_queue->try_pop() : _task_queue->pop();
+        if (!t) {
+            return;
+        }
+
+        
+        // debug_core("task_scheduler: try to switch to %p\n", t.get_promise());
+        // printf("scheduler: task status: %d\n", t.get_promise()->get_status());
+        kernel_assert(cpu::local_irq_on(), "task_scheduler: irq off");
+        // all tasks we own, we start it here
+        t.resume();
+
+        // debugf("task_scheduler: switch done");
+        // we do not track the status of tasks
+
+    }
+}
+
+
 /*
 template <typename return_type>
 std::coroutine_handle<> task<return_type>::task_awaiter::await_suspend(std::coroutine_handle<> h) {

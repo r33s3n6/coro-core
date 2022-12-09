@@ -143,6 +143,8 @@ uint64 walkaddr(pagetable_t pagetable, uint64 va) {
     return pa;
 }
 
+
+
 // Look up a virtual address, return the physical address,
 uint64 virt_addr_to_physical(pagetable_t pagetable, uint64 va) {
     uint64 page = walkaddr(pagetable, va);

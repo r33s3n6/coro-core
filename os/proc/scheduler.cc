@@ -55,7 +55,7 @@ shared_ptr<process> process_queue::pop(int core_id) {
             // debugf("core %d: skip process %s, binding core %d", core_id, (*it)->get_name(), (*it)->binding_core);
             continue;
         }
-        if(proc->get_state()==process::state::SLEEPING){
+        if(proc->get_state() == process::state::SLEEPING){
             continue;
         }
         if (min_it == queue.end() || stride_cmp(proc->stride, min_stride) < 0) {

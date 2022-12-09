@@ -5,6 +5,7 @@
 #include <utils/assert.h>
 
 #include <utils/log.h>
+#include <task_scheduler.h>
 
 #include "inode.h"
 

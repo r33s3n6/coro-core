@@ -12,11 +12,14 @@
 // #include <coroutine.h>
 #include <utils/panic.h>
 #include <utils/utility.h>
+#include <atomic/spinlock.h>
 
 
 #include <functional>
 
 class promise_base;
+class wait_queue_base;
+
 
 class process;
 class user_process;
@@ -165,6 +168,7 @@ class cpu {
 
     void backtrace_coroutine();
 
+    void sleep(wait_queue_base* wq, spinlock& lock);
     void yield();
     void switch_back(context* c);
     void save_context_and_run(std::function<void()> func);

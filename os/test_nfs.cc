@@ -13,6 +13,8 @@
 
 #include <arch/cpu.h>
 
+#include <task_scheduler.h>
+
 uint64 a = 0;
 
 task<void> test_coro2(device_id_t) {
@@ -608,4 +610,6 @@ void test_nfs2(void*) {
 
     // kernel_task_scheduler[0].schedule(std::move(test_coro(&a)));
     kernel_task_scheduler[0].schedule(std::move(test_nfs_coro(virtio_disk_id)));
+
+    infof("test_nfs: push ok");
 }
