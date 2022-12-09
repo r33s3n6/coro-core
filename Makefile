@@ -5,6 +5,8 @@ ifndef CPUS
 CPUS := 4
 endif
 
+DEBUG_MODE ?= 1
+
 K = os
 #U = user
 F = nfs
@@ -31,12 +33,17 @@ HEADER_DEP = $(addsuffix .d, $(basename $(CXX_OBJS)))
 INCLUDEFLAGS = -I$K
 
 CXXFLAGS = -Wall -Wextra -Werror # lint
+ifeq ($(DEBUG_MODE), 1)
 CXXFLAGS += -Og -gdwarf-2 -fno-omit-frame-pointer -ggdb # debug
+CXXFLAGS += -D MEMORY_DEBUG -D COROUTINE_TRACE
+else
+CXXFLAGS += -O2
+endif
+
 CXXFLAGS += -fcoroutines -std=c++20 -fno-exceptions -fno-rtti -D HANDLE_MEMORY_ALLOC_FAIL# coroutine
 CXXFLAGS += -foptimize-sibling-calls 
 CXXFLAGS += -D NCPU=$(CPUS) # cpu
 CXXFLAGS += -MD
-CXXFLAGS += -D MEMORY_DEBUG -D COROUTINE_TRACE
 CXXFLAGS += -mcmodel=medany
 CXXFLAGS += -ffreestanding -fno-common -nostdlib -lgcc -mno-relax
 CXXFLAGS += -Wno-error=write-strings -Wno-write-strings

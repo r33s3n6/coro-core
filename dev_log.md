@@ -362,5 +362,21 @@ task<void> virtio_disk::disk_rw_done(int id) {
 
 
 
+### 第十三周(12.5-12.11)
 
+#### 进展
+
+1. 做了简单的trace
+
+![image-20221210005113276](C:\Users\20115\AppData\Roaming\Typora\typora-user-images\image-20221210005113276.png)
+
+现在在debug模式下可以追踪线程的栈和协程的调用链。
+
+2. 修复了一些上次遇到的bug
+
+
+
+#### 下一步目标
+
+1. 写一些测试用例来对比多线程和协程的执行，包括速度和内存使用
 

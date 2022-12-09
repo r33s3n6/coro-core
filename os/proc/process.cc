@@ -497,7 +497,6 @@ bool kernel_process::run(){
         } else {
             warnf("kernel process %d state is invalid: %d\n", pid, int(_state));
             panic("process state is invalid");
-            __builtin_unreachable();
         }
     }
     

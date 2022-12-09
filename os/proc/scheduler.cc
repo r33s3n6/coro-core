@@ -171,8 +171,7 @@ void process_scheduler::run()
         all += now - timestamp1;
         timestamp1 = now;
         // sample rate 1 Hz
-        if (all > (timer::MS_TO_CYCLE(1000)))
-        {
+        if (all > (timer::MS_TO_CYCLE(1000))) {
             c->sample(all, busy);
             all = 0;
             busy = 0;

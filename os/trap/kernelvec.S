@@ -7,7 +7,9 @@
 
 .data
 __exception_occurred:
-        .zero 32
+        .rept 32
+        .word 1
+        .endr
 
 .text
 .globl kernel_trap

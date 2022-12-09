@@ -11,8 +11,12 @@ break *0x1000
 # kernel exception trace
 b __trace_exception
 b __trace_exception__sret
-b __early_trace_exception
 b __trace_panic
+
+set ((uint64*)&__exception_occurred)[0] = 0
+set ((uint64*)&__exception_occurred)[1] = 0
+set ((uint64*)&__exception_occurred)[2] = 0
+set ((uint64*)&__exception_occurred)[3] = 0
 
 cont
 cont

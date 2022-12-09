@@ -19,6 +19,9 @@ public:
     bool empty() { 
         return queue.empty();
     }
+    int32 size() {
+        return queue.size();
+    }
     
 };
 

@@ -24,7 +24,7 @@ public:
         auto guard = make_lock_guard(pid_lock);
         return next_pid++;
     }
-    
+    int32 size() { return queue.size(); }
 };
 
 class process_scheduler {

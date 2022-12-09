@@ -128,20 +128,36 @@ void task_queue::push(task_base&& proc) {
     auto guard = make_lock_guard(lock);
     queue.push_back(std::move(proc));
     // debugf("task_queue: wake up all (%d)(%d)", queue.size(), wait_task_queue.size());
-    wait_task_queue.wake_up_all();
+    
+    // wait_task_queue.wake_up_one();
 
 }
 
 void task_scheduler::start() {
+
     while (true) {
-        
-
-        task_base t = return_on_idle ? _task_queue->try_pop() : _task_queue->pop();
+        task_base t = _task_queue->try_pop();
         if (!t) {
-            return;
-        }
+            if (return_on_idle) {
+                return;
+            }
+            // uint64 failed_count=0;
+            // while (failed_count < 100000000) {
+            //     t = _task_queue->try_pop();
+            //     if (t) {
+            //         break;
+            //     }
+            //     failed_count++;
+            // }
+            // if (!t) {
+            //     t = _task_queue->pop();
+            // }
 
+            cpu::my_cpu()->yield();
+            continue;
+        }
         
+
         // debug_core("task_scheduler: try to switch to %p\n", t.get_promise());
         // printf("scheduler: task status: %d\n", t.get_promise()->get_status());
         kernel_assert(cpu::local_irq_on(), "task_scheduler: irq off");

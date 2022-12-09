@@ -573,6 +573,9 @@ task<void> test_make_nfs(device_id_t device_id, uint32 times) {
                     // kernel_assert(false, "");
                 }
             }
+            if (i % 1024 == 0) {
+                debugf("test_make_nfs: read %d", i);
+            }
         }
 
         co_await _file.close();
@@ -682,6 +685,6 @@ void test_nfs(void*) {
     // kernel_task_queue.push(test_make_nfs(ramdisk_id, 64 * 1024));
     // kernel_task_queue.push(test_make_nfs(virtio_disk_id, 64 * 1024));
     kernel_task_scheduler[0].schedule(
-        std::move(test_make_nfs(virtio_disk_id, 1 * 1024)));
+        std::move(test_make_nfs(virtio_disk_id, 64 * 1024)));
     // kernel_task_queue.push(test_make_nfs2(virtio_disk_id));
 }
