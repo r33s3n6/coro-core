@@ -565,11 +565,11 @@ task<int32> nfs_inode::unlink(shared_ptr<dentry> old_dentry) {
                         co_await inode_ref->truncate(0);
                         // inode_ref->mark_dirty();
 
-                        // co_await inode_ref->flush();
+                        co_await inode_ref->flush();
                         // TODO: free inode
-                        // co_await ((nfs*)fs)->free_inode(inode_ref->inode_number);
-                        //inode_ref->mark_invalid();
-                        //inode_ref->mark_clean();
+                        co_await ((nfs*)fs)->free_inode(inode_ref->inode_number);
+                        inode_ref->mark_invalid();
+                        inode_ref->mark_clean();
 
                     }else{
                         inode_ref->mark_dirty();

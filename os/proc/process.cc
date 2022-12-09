@@ -492,7 +492,7 @@ bool kernel_process::run(){
         } else if (_state == EXITED) {
             __clean_resources();
             return false;
-        } else if (_state == SLEEPING) {
+        } else if ((_state == SLEEPING) || (_state == RUNNABLE)) {
             return true; 
         } else {
             warnf("kernel process %d state is invalid: %d\n", pid, int(_state));
