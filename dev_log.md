@@ -368,7 +368,7 @@ task<void> virtio_disk::disk_rw_done(int id) {
 
 1. 做了简单的trace
 
-![image-20221210005113276](C:\Users\20115\AppData\Roaming\Typora\typora-user-images\image-20221210005113276.png)
+![image-20221210005113276](assets\week13_1.png)
 
 现在在debug模式下可以追踪线程的栈和协程的调用链。
 
