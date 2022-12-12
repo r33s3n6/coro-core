@@ -104,9 +104,13 @@ void init(){
     shared_ptr<process> test_nfs2_proc = make_shared<kernel_process>(kernel_process_queue.alloc_pid(), test_nfs2);
     test_nfs2_proc->set_name("test_nfs2");
 
+    shared_ptr<user_process> test_user_proc = make_shared<user_process>(kernel_process_queue.alloc_pid());
+    test_user_proc->test_load_elf((uint64)s_apps, e_apps - s_apps);
+    test_user_proc->set_name("test_user_hello_world");
+
     //kernel_process_queue.push(test_disk_rw_proc);
 
-    kernel_process_queue.push(test_nfs2_proc);
+    kernel_process_queue.push(test_user_proc);
 
     
 
@@ -209,7 +213,7 @@ extern "C" void kernel_init(uint64 hartid, uint64 device_tree)
     my_cpu->boot_hart();
     infof("hart %d starting", hartid);
 
-    infof("[%d] init scheduler", hartid);
+    infof("init scheduler");
     kernel_process_scheduler[hartid].set_queue(&kernel_process_queue);
 
 

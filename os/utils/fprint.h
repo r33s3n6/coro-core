@@ -4,6 +4,7 @@
 #include <coroutine.h>
 #include <ccore/types.h>
 #include <fs/inode.h>
+#include <fs/file.h>
 
 task<void> __fprint_int64(file* f, int64 xx, int64 base, int64 sign);
 

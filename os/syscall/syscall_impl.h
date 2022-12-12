@@ -1,11 +1,11 @@
-#if !defined(SYSCALL_IMPL_H)
-#define SYSCALL_IMPL_H
+#ifndef SYSCALL_SYSCALL_IMPL_H
+#define SYSCALL_SYSCALL_IMPL_H
 
-#include <ucore/ucore.h>
+#include <ccore/types.h>
 
-struct stat;
+struct file_stat;
 
-int sys_execv( char *pathname_va, char * argv_va[]);
+int sys_execv(char *pathname_va, char * argv_va[]);
 
 int sys_exit(int status);
 
@@ -39,7 +39,7 @@ int sys_sleep(unsigned long long time_in_ms);
 
 int sys_pipe(int (*pipefd_va)[2]);
 
-int sys_fstat(int fd, struct stat *statbuf_va);
+int sys_fstat(int fd, file_stat *statbuf_va);
 
 int sys_chdir(char *path_va);
 
@@ -50,7 +50,5 @@ int sys_unlink( char *pathname_va);
 int64 sys_setpriority(int64 priority);
 
 int64 sys_getpriority();
-
-void* sys_sharedmem(char* name_va, size_t len);
 
 #endif // SYSCALL_IMPL_H

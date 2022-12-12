@@ -1,5 +1,5 @@
-#if !defined(SYSCALL_IDS_H)
-#define SYSCALL_IDS_H
+#ifndef SYSCALL_SYSCALL_IDS_H
+#define SYSCALL_SYSCALL_IDS_H
 
 #define SYS_getcwd 17
 #define SYS_dup 23
@@ -31,9 +31,6 @@
 #define SYS_fork 220
 #define SYS_mmap 222
 #define SYS_execv 281
-#define SYS_sharedmem 282
-#define SYS_spawn 400
-#define SYS_mailread 401
-#define SYS_mailwrite 402
+
 
 #endif // SYSCALL_IDS_H

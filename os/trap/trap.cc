@@ -13,6 +13,8 @@
 
 #include "trap.h"
 
+extern void syscall();
+
 
 void trap_init_hart() {
     enable_kernel_trap();
@@ -29,11 +31,25 @@ void enable_kernel_trap() {
     cpu::local_irq_enable();
 }
 
+void interrupt_handler() {
+    int irq;
+    cpu* c = cpu::__my_cpu();
+
+    irq = c->plic_claim();
+    if (irq == VIRTIO0_IRQ) {
+        auto dev = device::get<virtio_disk>(virtio_disk_id);
+        dev->virtio_disk_intr();
+    } else if(irq>0) {
+        warnf("unexpected interrupt irq=%d", irq);
+    }
+    if (irq) {
+        c->plic_complete(irq);
+    }
+}
+
 void kernel_interrupt_handler(uint64 scause, uint64 stval, uint64 sepc) {
     kernel_process* p;
     uint64 cause = scause & 0xff;
-    int irq;
-
     
     cpu* c = cpu::__my_cpu();
 
@@ -46,18 +62,7 @@ void kernel_interrupt_handler(uint64 scause, uint64 stval, uint64 sepc) {
         //debug_core("kernel timer interrupt: schedule %s in", p->get_name());
         break;
     case SupervisorExternal:
-        irq = c->plic_claim();
-        if (irq == VIRTIO0_IRQ) {
-            // debug_core("virtio0 interrupt");
-            auto dev = device::get<virtio_disk>(virtio_disk_id);
-            dev->virtio_disk_intr();
-            //--  virtio_disk_intr();
-        } else if(irq>0) {
-            warnf("unexpected interrupt irq=%d", irq);
-        }
-        if (irq) {
-            c->plic_complete(irq);
-        }
+        interrupt_handler();
         break;
     default:
         errorf("unknown kernel interrupt: %p, sepc=%p, stval = %p\n", scause, sepc, stval);
@@ -167,34 +172,18 @@ extern "C" void kernel_trap(uint64 sp, uint64 fp) {
 
 void user_interrupt_handler(uint64 scause, uint64 stval, uint64 sepc) {
 
-    cpu* c = cpu::__my_cpu();
 
-    user_process* p = c->get_user_process();
-    int irq;
     switch (scause & 0xff) {
     case SupervisorTimer:
-
-        p->pause();
-        
+        cpu::__my_cpu()->switch_back(nullptr); // we don't save context, because stack is shared with other processes
         break;
     case SupervisorExternal:
-        irq = c->plic_claim();
-        if (irq == UART0_IRQ) {
-            infof("unexpected interrupt irq=UART0_IRQ");
-
-        } else if (irq == VIRTIO0_IRQ) {
-            auto dev = device::get<virtio_disk>(virtio_disk_id);
-            dev->virtio_disk_intr();
-        } else if (irq) {
-            infof("unexpected interrupt irq=%d", irq);
-        }
-        if (irq) {
-            c->plic_complete(irq);
-        }
+        interrupt_handler();
         break;
     default:
         infof("Unknown interrupt in user application: %p, stval = %p sepc = %p\n", scause, stval, sepc);
-        p->exit(-1);
+        panic("Unknown interrupt");
+        
         break;
     }
 }
@@ -203,12 +192,16 @@ void user_exception_handler(uint64 scause, uint64 stval, uint64 sepc) {
     cpu* c = cpu::__my_cpu();
     user_process* p = c->get_user_process();
     trapframe *trapframe = p->get_trapframe();
+
     switch (scause & 0xff) {
     case UserEnvCall:
         p->check_killed();
         trapframe->epc += 4;
 
-        //-- syscall();
+        debugf("user syscall: %d (%p)", trapframe->a7, trapframe->a0);
+        // p->exit(0);
+
+        syscall();
         break;
     case StoreAccessFault:
         infof(      "StoreAccessFault in user application: %p, stval = %p sepc = %p\n", scause, stval, sepc);
@@ -232,11 +225,11 @@ void user_exception_handler(uint64 scause, uint64 stval, uint64 sepc) {
         break;
     case LoadPageFault:
         infof(         "LoadPageFault in user application: %p, stval = %p sepc = %p\n", scause, stval, sepc);
-        p->exit(-2);
+        p->exit(-3);
         break;
     case IllegalInstruction:
         errorf(   "IllegalInstruction in user application: %p, stval = %p sepc = %p\n", scause, stval, sepc);
-        p->exit(-3);
+        p->exit(-2);
         break;
     default:
         errorf(    "Unknown exception in user application: %p, stval = %p sepc = %p\n", scause, stval, sepc);
@@ -259,10 +252,12 @@ void user_trap() {
     kernel_assert((sstatus & SSTATUS_SPP) == 0, "usertrap: not from user mode");
 
 
-    // these would be set in user_process::run
 
-    // w_sie(r_sie() & ~SIE_STIE); // disable timer interrupt while handling user trap
-    // enable_kernel_trap();
+
+    w_sie(r_sie() & ~SIE_STIE); // disable timer interrupt while handling user trap
+    enable_kernel_trap();
+    // set_kernel_trap();
+
     
 
     if (scause & (1ULL << 63)) { // interrput = 1
@@ -270,6 +265,8 @@ void user_trap() {
     } else { // interrput = 0
         user_exception_handler(scause, stval, sepc);
     }
+
+    // may not reach here
 
     user_trap_ret();
 }

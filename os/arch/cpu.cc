@@ -107,7 +107,7 @@ void cpu::sample(uint64 all, uint64 busy) {
 
 static void __function_caller(std::function<void()>* func_ptr) {
     kernel_assert(!cpu::local_irq_on(), "local_irq should be disabled");
-    (*func_ptr)();
+    func_ptr->operator()();
 
     cpu::__my_cpu()->switch_back(nullptr);
 
@@ -133,7 +133,7 @@ void cpu::switch_back(context* current) {
 
 
     // void* ra0 = __builtin_return_address(0);
-
+// 
     // debug_core("switch back: ra[0]: %p", ra0);
     // saved_context.print();
     swtch(current, &saved_context);  // will goto scheduler()
@@ -163,13 +163,18 @@ void cpu::save_context_and_run(std::function<void()> func) {
     kernel_assert(
         !cpu::local_irq_on() || (cpu::local_irq_on() && !(r_sie() & SIE_STIE)),
         "timer interrupt should be off");  // interrupt is off
-
+    debugf("save_context_and_run 1: ra: %p", __builtin_return_address(0));
     context temp_context;
     memset(&temp_context, 0, sizeof(context));
     temp_context.sp = (uint64)temp_kstack;
     temp_context.ra = (uint64)__function_caller;
     temp_context.a0 = (uint64)&func;
     swtch(&saved_context, &temp_context);
+    saved_context.ra = 0; // clear ra, so that we can detect if we messed up
+    debugf("save_context_and_run 2: ra: %p", __builtin_return_address(0));
+    
+    debugf("save_context_and_run: back to saved context");
+    saved_context.sp = 0; // for debug breakpoint
 }
 
 

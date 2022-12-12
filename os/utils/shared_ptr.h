@@ -264,6 +264,8 @@ class weak_ptr {
    public:
     constexpr weak_ptr() noexcept = default;
 
+    constexpr weak_ptr(std::nullptr_t) noexcept {}
+
     constexpr weak_ptr(shared_ptr<T>& other) {
         __reset(other.ptr, other.ref_count);
     }

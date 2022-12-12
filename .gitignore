@@ -13,3 +13,4 @@ nfs/fs-copy.dump
 
 tmp
 qemu.log
+*.out

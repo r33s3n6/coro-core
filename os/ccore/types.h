@@ -21,5 +21,9 @@ typedef short int16;
 typedef int   int32;
 typedef long  int64;
 
+// typedef long unsigned int ssize_t;
+// typedef long unsigned int size_t;
+// typedef int pid_t;
+#include <sys/types.h> // ssize_t, size_t, pid_t
 
 #endif // TYPES_H

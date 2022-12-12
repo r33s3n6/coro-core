@@ -2,18 +2,17 @@
 #include "syscall_impl.h"
 #include <arch/riscv.h>
 #include <arch/timer.h>
-#include <file/fcntl.h>
-#include <file/file.h>
+
 #include <fs/fs.h>
-#include <proc/proc.h>
+
 #include <trap/trap.h>
-#include <ucore/defs.h>
+
 #include <utils/log.h>
+#include <proc/process.h>
 
 char *syscall_names(int id)
 {
-    switch (id)
-    {
+    switch (id) {
     case SYS_getcwd:
         return "SYS_getcwd";
     case SYS_dup:
@@ -74,14 +73,6 @@ char *syscall_names(int id)
         return "SYS_mmap";
     case SYS_execv:
         return "SYS_execv";
-    case SYS_spawn:
-        return "SYS_spawn";
-    case SYS_mailread:
-        return "SYS_mailread";
-    case SYS_mailwrite:
-        return "SYS_mailwrite";
-    case SYS_sharedmem:
-        return "SYS_sharedmem";
     default:
         return "?";
     }
@@ -90,20 +81,27 @@ char *syscall_names(int id)
 // dispatch syscalls to different functions
 void syscall()
 {
-    struct proc *p = curr_proc();
-    struct trapframe *trapframe = p->trapframe;
+    user_process *p = cpu::__my_cpu()->get_user_process();
+    trapframe *trapframe = p->get_trapframe();
     uint64 id = trapframe->a7, ret;
     uint64 args[7] = {trapframe->a0, trapframe->a1, trapframe->a2, trapframe->a3, trapframe->a4, trapframe->a5, trapframe->a6};
     
-    // ignore read and write so that shell command don't get interrupted
-    if (id != SYS_write && id != SYS_read)
-    {
-        char *name=syscall_names(id);
-        (void) name;
-        tracecore("syscall %d (%s) args:%p %p %p %p %p %p %p", (int)id, name ,args[0] , args[1], args[2], args[3], args[4], args[5], args[6]);
-    }
-    pushtrace(id);
+    // // ignore read and write so that shell command don't get interrupted
+    // if (id != SYS_write && id != SYS_read)
+    // {
+    //     char *name=syscall_names(id);
+    //     (void) name;
+    //     tracecore("syscall %d (%s) args:%p %p %p %p %p %p %p", (int)id, name ,args[0] , args[1], args[2], args[3], args[4], args[5], args[6]);
+    // }
+
     switch (id) {
+    case SYS_fstat:
+        ret = sys_fstat((int)args[0], (file_stat *)args[1]);
+        break;
+    case SYS_exit:
+        ret = sys_exit(args[0]);
+    break;
+        /*
     case SYS_write:
         ret = sys_write(args[0], (void *)args[1], args[2]);
         break;
@@ -116,9 +114,7 @@ void syscall()
     case SYS_close:
         ret = sys_close(args[0]);
         break;
-    case SYS_exit:
-        ret = sys_exit(args[0]);
-        break;
+
     case SYS_sched_yield:
         ret = sys_sched_yield();
         break;
@@ -126,7 +122,7 @@ void syscall()
         ret = sys_setpriority(args[0]);
         break;
     case SYS_getpriority:
-        ret = sys_getpriority(args[0]);
+        ret = sys_getpriority();
         break;
     case SYS_getpid:
         ret = sys_getpid();
@@ -155,9 +151,7 @@ void syscall()
     case SYS_pipe:
         ret = sys_pipe((int(*)[2])args[0]);
         break;
-    case SYS_fstat:
-        ret = sys_fstat((int)args[0], (void *)args[1]);
-        break;
+
     case SYS_chdir:
         ret = sys_chdir((char *)args[0]);
         break;
@@ -170,17 +164,14 @@ void syscall()
     case SYS_unlink:
         ret = sys_unlink((char *)args[0]);
         break;
-    case SYS_sharedmem:
-        ret = (uint64)sys_sharedmem((char *)args[0], args[1]);
-        break;
+        */
     default:
         ret = -1;
         warnf("unknown syscall %d", (int)id);
     }
+
+    // may not reach
+
     trapframe->a0 = ret; // return value
-    if (id != SYS_write && id != SYS_read)
-    {
-        tracecore("syscall %d ret %l", (int)id, ret);
-    }
-    pushtrace(0x3033);
+
 }

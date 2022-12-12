@@ -8,6 +8,8 @@
 #include <utils/assert.h>
 #include <arch/cpu.h>
 
+#include <drivers/console.h>
+
 
 void process::set_name(const char* name) {
     // warnf("%p:set name %s",this, name);
@@ -39,19 +41,6 @@ void process::wake_up() {
     lock.unlock();
 }
 
-// pause and switch to another process
-// you should only call this when you use
-// shared stack
-void process::pause(){
-    lock.lock();
-    if(_state == RUNNING) {
-        _state = RUNNABLE;
-    }
-    lock.unlock();
-
-    kernel_assert(!cpu::local_irq_on(), "pause with irq on");
-    cpu::__my_cpu()->switch_back(nullptr); // we don't save context, for stack is shared with other processes
-}
 
 
 void process::backtrace_coroutine() {
@@ -79,12 +68,52 @@ user_process::user_process(int pid){
 }
 
 user_process::~user_process(){
-    if(pagetable){
-        __free_pagetable();
-    }
+    __clean_resources();
     
 }
 
+int user_process::__mmap(uint64 va, uint64 pa, uint64 size, uint64 flags, uint64 pte_flags) {
+    if (uvmmap(pagetable, va, pa, size, pte_flags) < 0) {
+        warnf("cannot map va %p -> pa %p (size %l)", va, pa, size);
+        return -1;
+    }
+    // debugf("mmap va %p -> pa %p (size %l)", va, pa, size);
+
+    mmap_infos.push_back(mmap_info{va, size, flags, pte_flags});
+
+    return 0;
+}
+
+int user_process::__mmap(uint64 va, uint64 size, uint64 flags, uint64 pte_flags) {
+    uint64 current_va = va;
+    uint64 va_end = va + size;
+    while (current_va < va_end) {
+        void* pa = kernel_allocator.alloc_page();
+        if (pa == nullptr) {
+            warnf("failed to allocate memory for user process");
+            goto err_free;
+        }
+        if (uvmmap(pagetable, current_va, (uint64)pa, PGSIZE, pte_flags) < 0) {
+
+            warnf("cannot map va %p -> pa %p (size %l)", va, pa, size);
+            goto err_free;
+        }
+        current_va += PGSIZE;
+
+    }
+
+    mmap_infos.push_back(mmap_info{va, size, flags & ~mmap_info::MAP_SHARED, pte_flags});
+
+    return 0;
+err_free:
+    if (current_va != va) {
+        uvmunmap(pagetable, va, current_va - va, true);
+    }
+    
+
+    return -1;
+
+}
 
 int user_process::__init_pagetable() {
     void* stack_pa;
@@ -95,82 +124,62 @@ int user_process::__init_pagetable() {
     trapframe_pa = (struct trapframe *)kernel_allocator.alloc_page();
     stack_pa = kernel_allocator.alloc_page();
 
+    kernel_assert(USTACK_SIZE == PGSIZE, "USTACK_SIZE != PGSIZE");
+
     if (pagetable == nullptr || trapframe_pa == nullptr || stack_pa == nullptr) {
         warnf("failed to allocate memory for user process");
-        goto err_free;
+        free_pagetable_pages(pagetable);
+        kernel_allocator.free_page(trapframe_pa);
+        kernel_allocator.free_page(stack_pa);
+
+        pagetable = nullptr;
+        trapframe_pa = nullptr;
+        stack_pa = nullptr;
+
+        return -ENOMEM;
     }
 
-        
-    if (uvmmap(pagetable, TRAMPOLINE,
-                 (uint64)trampoline, PGSIZE, PTE_R | PTE_X) < 0) {
+    memset(trapframe_pa, 0, PGSIZE);
+    memset(stack_pa, 0, PGSIZE);
 
+    if (__mmap(TRAMPOLINE, (uint64)trampoline, PGSIZE, mmap_info::MAP_SHARED, PTE_R | PTE_X) < 0) {
         warnf("cannot map trampoline");
-        goto err_free;
+        goto err_map;
     }
 
-    // map the trapframe just below TRAMPOLINE, for trampoline.S.
-    if (uvmmap(pagetable, TRAPFRAME, (uint64)(trapframe_pa),
-                    PGSIZE, PTE_R | PTE_W) < 0) {
-        
-        warnf("Can not map trapframe");
-        goto err_unmap_trampoline;
+    if (__mmap(TRAPFRAME, (uint64)trapframe_pa, PGSIZE, mmap_info::MAP_DEFAULT, PTE_R | PTE_W) < 0) {
+        warnf("cannot map trapframe");
+        goto err_map;
     }
 
-
-    if (uvmmap(pagetable, USER_STACK_BOTTOM - USTACK_SIZE,
-          (uint64)stack_pa, USTACK_SIZE, PTE_U | PTE_R | PTE_W) < 0) {
-        warnf("map ustack page failed");
-        goto err_unmap_trapframe;
+    if (__mmap(USER_STACK_TOP, (uint64)stack_pa, USTACK_SIZE, mmap_info::MAP_USER, PTE_U | PTE_R | PTE_W) < 0) {
+        warnf("cannot map ustack");
+        goto err_map;
     }
+
 
     stack_bottom_va = USER_STACK_BOTTOM;
     trapframe_pa->sp = stack_bottom_va;
-    
 
     return 0;
 
-err_unmap_trapframe:
-    uvmunmap(pagetable, TRAPFRAME, PGSIZE, false);
-
-
-err_unmap_trampoline:
-    uvmunmap(pagetable, TRAMPOLINE, PGSIZE, false);
-
-err_free:
-    free_pagetable_pages(pagetable);
-    kernel_allocator.free_page(trapframe_pa);
-    kernel_allocator.free_page(stack_pa);
-
-    pagetable = nullptr;
-    trapframe_pa = nullptr;
-    stack_pa = nullptr;
+err_map:
+    __free_pagetable();
 
     return -ENOMEM;
 }
 
 // free trapframe, stack, text, heap, pagetable
 void user_process::__free_pagetable() {
-    uvmunmap(pagetable, TRAMPOLINE, PGSIZE, false);  // unmap, don't recycle physical, shared
-    uvmunmap(pagetable, TRAPFRAME, PGSIZE, true);   // unmap, should recycle physical
-    uvmunmap(pagetable, USER_STACK_BOTTOM - USTACK_SIZE, USTACK_SIZE, true); // unmap, should recycle physical
 
-    trapframe_pa = nullptr;
-    stack_bottom_va = 0;
-
-    // free bin pages
-    if (text_size) {
-        uvmunmap(pagetable, USER_TEXT_START, PGROUNDUP(text_size), true);
-        text_size = 0;
+    for (auto& info : mmap_infos) {
+        uvmunmap(pagetable, info.start, info.size, !(info.flags & mmap_info::MAP_SHARED));
     }
 
-/*
-    if (heap_size) {
-        uvmunmap(pagetable, USER_HEAP_START, PGROUNDUP(heap_size), true);
-        heap_size = 0;
-    }
-    */
-
-    free_pagetable_pages(pagetable);
+    mmap_infos.clear();
+    
+    if (pagetable)
+        free_pagetable_pages(pagetable);
 
     pagetable = nullptr;
     
@@ -196,10 +205,7 @@ void user_process::__clean_resources() {
 
     // TODO
     // 2. put dentry
-    // if (cwd) {
-    //     cwd->put();
-    //     cwd = nullptr;
-    // }
+    cwd = nullptr;
 
     // 3. clean children
     __clean_children();
@@ -238,9 +244,10 @@ void process::exit(int code){
     infof("proc %d exit with %d\n", pid, code);
 
 
-    kernel_assert(!cpu::local_irq_on(), "pause with irq on");
+    // kernel_assert(!cpu::local_irq_on(), "pause with irq on");
     // switch back to previous context
     cpu::__my_cpu()->switch_back(nullptr);
+    __builtin_unreachable();
 
 }
 
@@ -297,6 +304,55 @@ bool user_process::check_killed(){
     return false;
 }
 
+int user_process::test_load_elf(uint64 start, uint64 size){
+    auto guard = make_lock_guard(lock);
+
+    int ret = __load_elf(start, size);
+    if (ret < 0) {
+        warnf("__load_elf failed");
+        return ret;
+    }
+    
+    // set stdin, stdout, stderr
+    files[0] = &sbi_console;
+    files[1] = &sbi_console;
+    files[2] = &sbi_console;
+
+    // push argc, argv
+    char name[] = "hello_world";
+    uint64 sp = stack_bottom_va;
+    sp -= sizeof(name);
+    ret = copyout(pagetable, sp, name, sizeof(name));
+    if (ret < 0) {
+        warnf("copyout failed");
+        return ret;
+    }
+
+    uint64 argv0 = sp; // pointer to "hello_world"
+    sp -= sizeof(uint64);
+    ret = copyout(pagetable, sp, &argv0, sizeof(uint64));
+    if (ret < 0) {
+        warnf("copyout failed");
+        return ret;
+    }
+
+    uint64 argc = 1;
+    sp -= sizeof(uint64);
+    ret = copyout(pagetable, sp, &argc, sizeof(uint64));
+    if (ret < 0) {
+        warnf("copyout failed");
+        return ret;
+    }
+
+
+    trapframe_pa->sp = sp;
+
+
+    _state = RUNNABLE;
+    resume_func = user_trap_ret;
+    return 0;
+}
+
 
 
 
@@ -311,11 +367,10 @@ bool user_process::run(){
         _state = RUNNING;
     }
     
-
+    kernel_assert(!cpu::timer_irq_on(), "run with irq on");
 
     // actual run 
     cpu::my_cpu()->save_context_and_run(resume_func);
-
 
     {
         auto guard = make_lock_guard(lock);
@@ -328,7 +383,7 @@ bool user_process::run(){
             return true; 
         } else if (_state == EXITED || _state == ZOMBIE) {
             return false;
-        } else if (_state == SLEEPING) { // process itself call sleep
+        } else if (_state == SLEEPING || _state == RUNNABLE) { // process itself call sleep
             return true;
         } else {
             panic("process state is invalid");
@@ -340,10 +395,12 @@ bool user_process::run(){
 
 }
 
-void user_process::resume_func_done(uint64 ret) {
+// called with temp stack
+void user_process::syscall_ret(uint64 ret) {
     trapframe_pa->a0 = ret;
-    resume_func = old_resume_func;
-    resume_func();
+    trapframe_pa->epc += 4;
+    user_trap_ret();
+
 }
 
 void user_process::wait_children_done(){
@@ -353,10 +410,10 @@ void user_process::wait_children_done(){
 }
 
 void user_process::wait_children(){
-    wait_children_queue.sleep(this);
-
-    old_resume_func = resume_func;
-    resume_func = std::bind(&user_process::wait_children_done, this);
+    // wait_children_queue.sleep(this);
+// 
+    // // old_resume_func = resume_func;
+    // resume_func = std::bind(&user_process::wait_children_done, this);
 }
 
 int user_process::alloc_fd(file *f) {
@@ -471,7 +528,6 @@ bool kernel_process::run(){
         //debug_core("run kernel process %d, state=%d", pid, (int)_state);
 
         // set stie, not set sie
-        timer::set_next_timer();
         timer::start_timer_interrupt();
         
         c->save_context_and_switch_to(&_context);

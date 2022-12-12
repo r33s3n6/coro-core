@@ -2,6 +2,7 @@
 #define DRIVERS_CONSOLE_H
 
 #include <fs/inode.h>
+#include <fs/file.h>
 #include <sbi/sbi.h>
 
 class sbi_console_file : public file {

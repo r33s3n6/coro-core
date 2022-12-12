@@ -3,6 +3,7 @@
 
 #include <arch/timer.h>
 #include <fs/inode.h>
+#include <fs/file.h>
 #include <arch/cpu.h>
 
 #include <atomic/spinlock.h>
@@ -370,7 +371,11 @@ extern logger::log_color debug_core_color[];
 #if defined(USE_LOG_INFO)
 
 #define co_infof(fmt, ...) co_await kernel_logger.printf(logger::log_level::INFO, fmt"\n", ##__VA_ARGS__)
-#define __console_infof(with_lock,fmt, ...) kernel_console_logger.printf<with_lock>(logger::log_level::INFO, fmt"\n", ##__VA_ARGS__)
+#define __console_infof(with_lock,fmt, ...) \
+    do {                                                                                                      \
+        int hartid = cpu::current_id();                                                                                      \
+        kernel_console_logger.printf<with_lock>(logger::log_level::INFO, "[%d] " fmt "\n", hartid, ##__VA_ARGS__); \
+    } while (0)
 #define __infof(fmt, ...) __console_infof(false, fmt, ##__VA_ARGS__)
 #define infof(fmt, ...) __console_infof(true, fmt, ##__VA_ARGS__)
 #else

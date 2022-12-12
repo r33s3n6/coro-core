@@ -23,6 +23,7 @@ void uvmclear(pagetable_t pagetable, uint64 va);
 int uvmcopy(pagetable_t old_pagetable, pagetable_t new_pagetable, uint64 total_size);
 int copyout(pagetable_t pagetable, uint64 dstva, void *src, uint64 len);
 int copyin(pagetable_t pagetable, void *dst, uint64 srcva, uint64 len);
+int memset_user(pagetable_t pagetable, uint64 dstva, uint8 val, uint64 len);
 int copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max);
 int64 either_copyout(void *dst, void *src, uint64 len, int is_user_dst);
 int64 either_copyin(void *dst, void *src, uint64 len, int is_user_src);

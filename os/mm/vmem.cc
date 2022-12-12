@@ -234,17 +234,16 @@ void uvmunmap(pagetable_t pagetable, uint64 va, uint64 size, int do_free) {
     uint64 a, last;
     pte_t *pte;
 
-    a = PGROUNDDOWN(va);
+    if(((va % PGSIZE) != 0) || ((size % PGSIZE) != 0)) {
+        warnf("va=%p size=%l do_free=%d", va, size, do_free);
+        panic("uvmunmap: not aligned");
+    }
+
+    a = va;
     last = PGROUNDDOWN(va + size - 1);
 
-    if(a!=va || last!=va+size-1) {
-        warnf("uvmunmap: not aligned");
-    }
-        
 
-    debugf("va=%p size=%d do_free=%d", va, size, do_free);
-    if ((va % PGSIZE) != 0)
-        panic("uvmunmap: not aligned");
+    debugf("uvmunmap: va=%p size=%d do_free=%d", va, size, do_free);
 
     for (;;)
     {
@@ -469,6 +468,25 @@ int copyout(pagetable_t pagetable, uint64 dstva, void *src, uint64 len) {
 
         len -= n;
         _src += n;
+        dstva = va0 + PGSIZE;
+    }
+    return 0;
+}
+
+int memset_user(pagetable_t pagetable, uint64 dstva, uint8 val, uint64 len) {
+    uint64 n, va0, pa0;
+
+    while (len > 0) {
+        va0 = PGROUNDDOWN(dstva);
+        pa0 = walkaddr(pagetable, va0);
+        if (pa0 == 0)
+            return -1;
+        n = PGSIZE - (dstva - va0);
+        if (n > len)
+            n = len;
+        memset((void *)(pa0 + (dstva - va0)), val, n);
+
+        len -= n;
         dstva = va0 + PGSIZE;
     }
     return 0;

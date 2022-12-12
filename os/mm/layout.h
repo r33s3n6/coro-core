@@ -1,12 +1,11 @@
 // the kernel expects there to be RAM
 // for use by the kernel and user pages
 // from physical address 0x80000000 to PHYSTOP.
-#define KERNBASE 0x80200000L
-#define PHYSTOP (0x80000000 + 128 * 1024 * 1024) // 128M
-
+#define KERNBASE (0x00'8020'0000uLL)
 #define IO_MEM_START (0x80000000 + 127 * 1024 * 1024)
+#define PHYSTOP      (0x80000000 + 128 * 1024 * 1024) // 128M
 
-#define VMEM_START 0x100000000uLL
+#define VMEM_START (0x01'0000'0000uLL) // 4 GB, vmalloc start address
 
 // map the trampoline page to the highest address,
 // in both user and kernel space.
@@ -17,9 +16,17 @@
 // that have the high bit set.
 #define MAXVA (1L << (9 + 9 + 9 + 12 - 1))  // 256 GB
 
-#define USER_TOP (MAXVA)    // virtual address
-#define TRAMPOLINE (USER_TOP - PGSIZE)  // virtual address
-#define TRAPFRAME (TRAMPOLINE - PGSIZE) // virtual address
+#define KSTACK_SIZE (8192)
+#define USTACK_SIZE (4096)
+#define TRAPFRAME_SIZE (PGSIZE)
+
+#define USER_TOP   (0x20'0000'0000uLL)  // 128 GB
+#define TRAMPOLINE (MAXVA - PGSIZE)  // virtual address
+#define TRAPFRAME  (TRAMPOLINE - TRAPFRAME_SIZE) // virtual address
+
+#define USER_STACK_BOTTOM (USER_TOP) // 128 GB, user stack bottom address 
+#define USER_STACK_TOP    (USER_TOP - USTACK_SIZE) // 128 GB - USTACK_SIZE, user stack top address
+#define USER_TEXT_START   (0x00'0000'1000uLL)  // 4 KB, min user text start address
 
 // qemu puts UART registers here in physical memory.
 #define UART0 0x10000000L   // 256 MB
@@ -41,13 +48,8 @@
 #define PLIC_SCLAIM(hart) (PLIC + 0x201004 + (hart)*0x2000)
 
 
-#define USER_STACK_BOTTOM 0xC0000000   // 3GB, user stack lower address 
-#define USER_TEXT_START 0x1000
 
 
-#define KSTACK_SIZE (8192)
-#define USTACK_SIZE (4096)
-#define TRAPFRAME_SIZE (4096)
 
 extern char skernel[];
 extern char ekernel[];
@@ -60,6 +62,9 @@ extern char e_rodata[];
 
 extern char s_data[];
 extern char e_data[];
+
+extern char s_apps[];
+extern char e_apps[];
 
 extern char s_bss[];
 extern char e_bss[];

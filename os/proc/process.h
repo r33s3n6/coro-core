@@ -8,6 +8,7 @@
 #include <atomic/lock.h>
 
 #include <fs/inode.h>
+#include <fs/file.h>
 
 #include <arch/cpu.h>
 #include <trap/trap.h>
@@ -57,7 +58,7 @@ protected:
     
     
     state _state = INIT;   // Process state
-    int pid = -1;                   // Process ID
+    pid_t pid = -1;                   // Process ID
     int exit_code = -1;             // Exit status to be returned to parent's wait
     uint64 stack_bottom_va = 0;     // Virtual address of stack
 
@@ -86,7 +87,7 @@ protected:
         return _state == ALLOCATED;
     }
 
-    void pause();
+    // void pause();
 
     void sleep() override;
     void wake_up() override;
@@ -121,14 +122,39 @@ protected:
     void __clean_children();
 };
 
+
+
+struct mmap_info {
+    enum mmap_flags {
+        MAP_DEFAULT   = 0x00,    
+        MAP_SHARED    = 0x01,    // don't free physical pages
+        MAP_ANONYMOUS = 0x02, // all zeros
+        MAP_USER      = 0x04, // user space
+    };
+    uint64 start = 0;
+    uint64 size = 0;
+    uint64 flags = 0;
+    uint64 pte_flags = 0;
+    weak_ptr<inode> _inode = nullptr;
+    filesystem* fs = nullptr;
+    uint64 inode_number = 0;
+    uint64 offset = 0;
+
+    mmap_info(uint64 start = 0, uint64 size = 0, uint64 flags = 0,
+     uint64 pte_flags = 0, weak_ptr<inode> _inode = nullptr,
+      filesystem* fs = nullptr, uint64 inode_number = 0, uint64 offset = 0) noexcept
+        : start(start), size(size), flags(flags), pte_flags(pte_flags),
+         _inode(_inode), fs(fs), inode_number(inode_number), offset(offset) {}
+};
+
 class user_process : public process {
 
     protected:
-    // bool killed = false;              // If non-zero, have been killed
     
-    trapframe *trapframe_pa = nullptr;   // data page for trampoline.S, physical address
-    pagetable_t pagetable = nullptr;  // User page table
+    trapframe* trapframe_pa = nullptr;   // data page for trampoline.S, physical address
+    pagetable_t pagetable = nullptr;     // User page table
 
+    list<mmap_info> mmap_infos;
     
     protected:
     uint64 text_size = 0;             // size of text segment (bytes)
@@ -136,17 +162,16 @@ class user_process : public process {
 
     uint64 min_va = 0;              // min virtual address
     uint64 max_va = 0;              // max virtual address
-    uint64 stack_va = 0;            // Virtual address of stack
-    uint64 heap_va = 0;             // Virtual address of heap
-    uint64 brk_va = 0;              // Virtual address of brk
+    // uint64 stack_va = 0;            // Virtual address of stack
+    // uint64 heap_va = 0;             // Virtual address of heap
+    // uint64 brk_va = 0;              // Virtual address of brk
     
     file *files[FD_MAX] {nullptr};    // Opened files
-    dentry *cwd = nullptr;            // Current directory
+    shared_ptr<dentry> cwd = nullptr; // Current directory
 
-    // void (*resume_func)(void) = nullptr; // resume function
 
     std::function<void()> resume_func;
-    std::function<void()> old_resume_func;
+
     
     public:
     user_process(int pid);
@@ -160,13 +185,16 @@ class user_process : public process {
     void wait_children();
     bool check_killed();
 
+    int test_load_elf(uint64 start, uint64 size);
+
     private:
+    int __mmap(uint64 va, uint64 pa, uint64 size, uint64 flags, uint64 pte_flags);
+    int __mmap(uint64 va, uint64 size, uint64 flags, uint64 pte_flags);
     int  __init_pagetable();
     void __free_pagetable();
 
     void __close_files();
 
-    int __load_text(uint64 start, uint64 end);
     int __load_elf(uint64 start, uint64 size);
 
     public:
@@ -178,7 +206,7 @@ class user_process : public process {
 
     private:
     void wait_children_done();
-    void resume_func_done(uint64 ret);
+    void syscall_ret(uint64 ret);
 
     protected:
     virtual void __clean_resources() override;

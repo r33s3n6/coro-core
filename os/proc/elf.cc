@@ -245,28 +245,84 @@ int user_process::__load_elf(uint64 start, uint64 size) {
     for (uint32 i = 0; i < header->e_phnum; i++) {
         if (ph[i].p_type == elf64_program_header::PT_LOAD) {
             if (ph[i].p_offset + ph[i].p_filesz > size) {
-                warnf("invalid elf program headers");
+                warnf("ph[i].p_offset + ph[i].p_filesz > size");
                 return -1;
             }
-            // if (ph[i].p_vaddr + ph[i].p_memsz > 0x80000000) {
-            //     warnf("invalid elf program headers");
-            //     return -1;
-            // }
             uint64 start_addr = ph[i].p_vaddr;
-            uint64 end_addr = start_addr + ph[i].p_memsz;
-            if (start_addr > max_va) {
-                max_va = start_addr;
+
+            // uint64 end_addr = start_addr + ph[i].p_memsz;
+            uint64 start_addr_aligned = PGROUNDDOWN(start_addr);
+            uint64 end_addr_aligned = PGROUNDUP(ph[i].p_vaddr + ph[i].p_memsz);
+            uint64 end_addr_file = ph[i].p_vaddr + ph[i].p_filesz;
+
+            uint64 mem_size = end_addr_aligned - start_addr_aligned;
+
+            if (end_addr_aligned >= USER_STACK_TOP) {
+                warnf("end_addr_aligned >= USER_STACK_TOP");
+                return -1;
             }
-            if (end_addr < min_va) {
-                min_va = end_addr;
+
+            if (start_addr_aligned < USER_TEXT_START) {
+                warnf("start_addr_aligned (%p) < USER_TEXT_START", start_addr_aligned);
+                return -1;
+            }
+
+            if (start_addr_aligned < min_va) {
+                min_va = start_addr_aligned;
+            }
+            if (end_addr_aligned > max_va) {
+                max_va = end_addr_aligned;
             }
             
             // map memory
+            uint64 pte_flags = 0;
+            if (ph[i].p_flags & elf64_program_header::PF_R) {
+                pte_flags |= PTE_R;
+            }
+            if (ph[i].p_flags & elf64_program_header::PF_W) {
+                pte_flags |= PTE_W;
+            }
+            if (ph[i].p_flags & elf64_program_header::PF_X) {
+                pte_flags |= PTE_X;
+            }
+            pte_flags |= PTE_U;
+            int ret = __mmap(start_addr_aligned, mem_size, mmap_info::MAP_USER, pte_flags);
+            if (ret < 0) {
+                warnf("mmap failed");
+                return -1;
+            }
 
-            //TODO
+            // debugf("load elf: start_addr: %p, mem_size: %p, pte_flags: %p", start_addr_aligned, mem_size, pte_flags);
+
+            // copy data
+            ret = copyout(pagetable, start_addr, (void*)(start + ph[i].p_offset), ph[i].p_filesz);
+            if (ret < 0) {
+                warnf("copyout failed");
+                return -1;
+            }
+            // memset zeros
+            if (start_addr > start_addr_aligned) {
+                ret = memset_user(pagetable, start_addr_aligned, 0, start_addr - start_addr_aligned);
+                if (ret < 0) {
+                    warnf("memset_user failed");
+                    return -1;
+                }
+            }
+            if (end_addr_file < end_addr_aligned) {
+                ret = memset_user(pagetable, end_addr_file, 0, end_addr_aligned - end_addr_file);
+                if (ret < 0) {
+                    warnf("memset_user failed");
+                    return -1;
+                }
+            }
+            
+
         }
     }
 
+    // set entry point
+    trapframe_pa->epc = header->e_entry;
+    // _state = RUNNABLE;
 
     return 0;
 

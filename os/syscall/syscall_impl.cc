@@ -1,32 +1,54 @@
 #include "syscall_impl.h"
 #include <arch/timer.h>
-#include <file/file.h>
-#include <proc/proc.h>
-#include <file/stat.h>
-#include <mem/shared.h>
+#include <fs/inode.h>
+#include <fs/file.h>
+#include <proc/process.h>
+#include <utils/log.h>
+#include <mm/vmem.h>
+
 #define min(a, b) (a) < (b) ? (a) : (b);
 
-int sys_fstat(int fd, struct stat *statbuf_va){
-    struct proc *p = curr_proc();
+int sys_fstat(int fd, file_stat* statbuf_va){
+    user_process *p = cpu::__my_cpu()->get_user_process();
 
     // invalid fd
     if (fd < 0 || fd >= FD_MAX) {
-        infof("invalid fd %d", fd);
+        warnf("invalid fd %d", fd);
         return -1;
     }
 
-    struct file *f = p->files[fd];
+    file *f = p->get_file(fd);
 
     // invalid fd
     if (f == NULL) {
-        infof("fd %d is not opened", fd);
+        warnf("fd %d is not opened", fd);
         return -1;
     }
 
-    return filestat(f, (uint64)statbuf_va);
+    file_stat stat_buf;
 
+    // int ret = f->stat(&stat_buf);
+    int ret = -1; // TODO: implement stat
+    if (ret < 0) {
+        return ret;
+    }
+
+    // copy stat_buf to user space
+    if (copyout(p->get_pagetable(), (uint64)statbuf_va, (void *)&stat_buf, sizeof(stat_buf)) < 0) {
+        return -1;
+    }
+
+    return 0;
 }
 
+int sys_exit(int code) {
+    user_process *p = cpu::__my_cpu()->get_user_process();
+    p->exit(code);
+    
+    return 0;
+}
+
+/*
 int sys_pipe(int (*pipefd_va)[2]) {
     struct proc *p = curr_proc();
     struct file *rf, *wf;
@@ -61,10 +83,6 @@ int sys_pipe(int (*pipefd_va)[2]) {
     return 0;
 }
 
-int sys_exit(int code) {
-    exit(code);
-    return 0;
-}
 
 int sys_sched_yield() {
     yield();
@@ -94,6 +112,7 @@ pid_t sys_getppid()
 pid_t sys_fork() {
     return fork();
 }
+*/
 
 /**
  * @brief Create directory at given path
@@ -101,24 +120,25 @@ pid_t sys_fork() {
  * @param path_va Points to the path at user space
  * @return int64 0 if successfull, otherwise failed 
  */
-int sys_mkdir(char *path_va) {
-    struct proc *p = curr_proc();
-    char path[MAXPATH];
-    struct inode *ip;
+// int sys_mkdir(char *path_va) {
+//     struct proc *p = curr_proc();
+//     char path[MAXPATH];
+//     struct inode *ip;
 
-    if (copyinstr(p->pagetable, path, (uint64)path_va, MAXPATH) != 0) {
-        return -2;
-    }
-    ip = create(path, T_DIR, 0, 0);
+//     if (copyinstr(p->pagetable, path, (uint64)path_va, MAXPATH) != 0) {
+//         return -2;
+//     }
+//     ip = create(path, T_DIR, 0, 0);
 
-    if (ip == NULL) {
-        return -1;
-    }
-    iunlockput(ip);
+//     if (ip == NULL) {
+//         return -1;
+//     }
+//     iunlockput(ip);
 
-    return 0;
-}
+//     return 0;
+// }
 
+/*
 int sys_chdir(char *path_va) {
     char path[MAXPATH];
     struct inode *ip;
@@ -213,38 +233,40 @@ uint64 sys_time_ms() {
     return get_time_ms();
 }
 
+*/
+
 /**
  * @brief Set priority of current process
  * 
  * @param priority >=2
  * @return int64 return the priority set, or -1 if failed
  */
-int64 sys_setpriority(int64 priority) {
-    if (2 <= priority) {
-        struct proc *p = curr_proc();
-        acquire(&p->lock);
-        p->priority = priority;
-        release(&p->lock);
-        return priority;
-    }
-    return -1;
-}
+// int64 sys_setpriority(int64 priority) {
+//     if (2 <= priority) {
+//         struct proc *p = curr_proc();
+//         acquire(&p->lock);
+//         p->priority = priority;
+//         release(&p->lock);
+//         return priority;
+//     }
+//     return -1;
+// }
 
 /**
  * @brief Get priority of current process
  * 
  * @return int64 priority
  */
-int64 sys_getpriority() {
-    int64 priority;
-    struct proc *p = curr_proc();
-    acquire(&p->lock);
-    priority = p->priority;
-    release(&p->lock);
-    return priority;
-}
+// int64 sys_getpriority() {
+//     int64 priority;
+//     struct proc *p = curr_proc();
+//     acquire(&p->lock);
+//     priority = p->priority;
+//     release(&p->lock);
+//     return priority;
+// }
 
-
+/*
 int sys_close(int fd) {
     struct proc *p = curr_proc();
 
@@ -536,3 +558,4 @@ void*sys_sharedmem(char* name_va, size_t len){
 
     return shmem_va;
 }
+*/

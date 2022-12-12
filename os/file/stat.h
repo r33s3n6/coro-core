@@ -1,5 +1,5 @@
-#if !defined(STAT_H)
-#define STAT_H
+#ifndef FILE_STAT_H
+#define FILE_STAT_H
 #include <ccore/types.h>
 
 struct stat {
