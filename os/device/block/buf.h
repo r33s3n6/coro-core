@@ -59,6 +59,10 @@ class block_buffer_node : public referenceable_buffer<block_buffer_node> {
     }
 
     void print();
+
+    explicit operator bool() const {
+        return data;
+    }
     
     public:
 

@@ -93,22 +93,17 @@ pte_t *walk(pagetable_t pagetable, uint64 va, int alloc) {
     for (int level = 2; level > 0; level--)
     {
         pte_t *pte = &pagetable[PX(level, va)];
-        if (*pte & PTE_V)
-        {
+        if (*pte & PTE_V) {
             // found the pte
             pagetable = (pagetable_t)PTE2PA(*pte);
-        }
-        else
-        {
+        } else {
             // pte does not exist
-            if (!alloc)
-            {
+            if (!alloc) {
                 return nullptr;
             }
             // should create new child page table
             pagetable = (pagetable_t)kernel_allocator.alloc_page();
-            if (pagetable == nullptr)
-            {
+            if (pagetable == nullptr) {
                 warnf("out of memory when creating pagetable");
                 return nullptr;
             }
@@ -279,8 +274,7 @@ void kvmunmap(pagetable_t kpgtbl, uint64 va, uint64 size, int do_free) {
 pagetable_t create_empty_user_pagetable() {
     pagetable_t pagetable;
     pagetable = (pagetable_t)kernel_allocator.alloc_page();
-    if (pagetable != nullptr)
-    {
+    if (pagetable != nullptr) {
         memset(pagetable, 0, PGSIZE);
     }
     return pagetable;
@@ -299,8 +293,7 @@ uint64 uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz) {
     for (a = oldsz; a < newsz; a += PGSIZE)
     {
         mem = (char*)kernel_allocator.alloc_page();
-        if (mem == 0)
-        {
+        if (mem == nullptr) {
             uvmdealloc(pagetable, a, oldsz);
             return 0;
         }
@@ -405,7 +398,7 @@ int uvmcopy(pagetable_t old_pagetable, pagetable_t new_pagetable, uint64 total_s
             panic("uvmcopy: page not present");
         pa = PTE2PA(*pte);
         flags = PTE_FLAGS(*pte);
-        if ((mem = (char*)kernel_allocator.alloc_page()) == 0)
+        if ((mem = (char*)kernel_allocator.alloc_page()) == nullptr)
             goto err_ustack;
         memmove(mem, (char *)pa, PGSIZE);
         if (mappages(new_pagetable, cur_addr, PGSIZE, (uint64)mem, flags) != 0)
@@ -426,7 +419,7 @@ int uvmcopy(pagetable_t old_pagetable, pagetable_t new_pagetable, uint64 total_s
             panic("uvmcopy: page not present");
         pa = PTE2PA(*pte);
         flags = PTE_FLAGS(*pte);
-        if ((mem = (char*)kernel_allocator.alloc_page()) == 0)
+        if ((mem = (char*)kernel_allocator.alloc_page()) == nullptr)
             goto err;
         memmove(mem, (char *)pa, PGSIZE);
         if (mappages(new_pagetable, cur_addr, PGSIZE, (uint64)mem, flags) != 0)

@@ -92,7 +92,9 @@ class inode : public referenceable_buffer<inode> {
 
     void print();
 
-
+    explicit operator bool() {
+        return true;
+    }
 
 public:
     filesystem* fs = nullptr;

@@ -29,7 +29,7 @@ class promise_base;
 class process : public sleepable {
 
     public:
-        // scheduler related
+    // scheduler related
     uint64 stride = 0;
     uint64 priority = 16;
     uint64 cpu_time = 0;            // ms, user and kernel

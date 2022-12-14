@@ -2,9 +2,10 @@
 
 ramdisk::ramdisk(uint64 _nblocks) : block_device("ramdisk"), nblocks(_nblocks) {
     page_index_index = (uint8 ***)kernel_allocator.alloc_page();
+    if (!page_index_index) 
+        return;
     memset(page_index_index, 0, PGSIZE);
     debugf("ramdisk::ramdisk: %p, nblocks = %d, page_index_index: %p", this, this->nblocks, page_index_index);
-    // page_index = (uint64 **)kernel_allocator.alloc_page();
 }
 
 ramdisk::~ramdisk() {
@@ -25,6 +26,8 @@ uint64 ramdisk::capacity() const {
     return nblocks;
 }
 int ramdisk::open(void*) {
+    if (!page_index_index)
+        return -1;
     register_device(ramdisk_id);
     debugf("ramdisk: opened");
     return 0;
@@ -51,6 +54,8 @@ task<uint8*> ramdisk::walk(uint64 block_no, uint64* offset) {
 
     if (page_index_ptr == nullptr) {
         page_index_ptr = (uint8 **)kernel_allocator.alloc_page();
+        if (!page_index_ptr)
+            co_return task_fail;
         page_index_index[first_index] = page_index_ptr;
         memset(page_index_ptr, 0, PGSIZE);
     }
@@ -59,6 +64,8 @@ task<uint8*> ramdisk::walk(uint64 block_no, uint64* offset) {
 
     if (page_ptr == nullptr) {
         page_ptr = (uint8 *)kernel_allocator.alloc_page();
+        if (!page_ptr)
+            co_return task_fail;
         page_index_ptr[second_index] = page_ptr;
         memset(page_ptr, 0, PGSIZE);
     }

@@ -1,51 +1,15 @@
 #include "fcntl.h"
 #include <file/file.h>
-#include <fs/fs.h>
-#include <proc/proc.h>
-#include <ucore/defs.h>
-#include <ucore/types.h>
-#include <device/console.h>
+
+#include <proc/process.h>
+
+#include <ccore/types.h>
+
 #include <file/stat.h>
-/**
- * @brief The global file pool
- * Every opened file is kept here in system level
- * Process files are pointing here.
- * 
- */
-struct {
-    struct file files[FILE_MAX];    // system level files
-    struct spinlock lock;
-} filepool;
-struct device_rw_handler device_rw_handler[NDEV];
-void console_init();
-void cpu_device_init();
-void mem_device_init();
-void proc_device_init();
 
-/**
- * @brief Call xxx_init of all devices
- * 
- */
-void device_init() {
-    console_init();
-    cpu_device_init();
-    mem_device_init();
-    proc_device_init();
-}
-/**
- * @brief Init the global file pool
- * 
- */
-void fileinit() {
-    init_spin_lock_with_name(&filepool.lock, "filepool.lock");
-    device_init();
-}
 
-/**
- * @brief Release a reference to a file, close the file if ref is zero
- * 
- * @param f the file in global file pool
- */
+
+
 void fileclose(struct file *f) {
     struct file ff;
     acquire(&filepool.lock);

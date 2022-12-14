@@ -113,8 +113,7 @@ void process_scheduler::run()
 
     cpu *c = cpu::__my_cpu();
     int core_id = c->get_core_id();
-    while(true)
-    {
+    while(true) {
         
         kernel_assert(!cpu::__timer_irq_on(), "timer irq should be off");
         
@@ -139,6 +138,8 @@ void process_scheduler::run()
         process->last_start_time = timer::get_time_ms();
         uint64 pass = BIG_STRIDE / (process->priority);
         process->stride += pass;
+
+        c->set_stride(process->stride);
 
         process->schedule_lock.unlock();
         

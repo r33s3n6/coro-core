@@ -24,6 +24,8 @@
 #include <drivers/virtio/virtio_disk.h>
 #include <drivers/ramdisk/ramdisk.h>
 
+#include <test/test_runner.h>
+
 // uint8 __attribute__((aligned(PGSIZE))) virtio_disk_pages[2 * PGSIZE];
 virtio_disk vd0((uint8*)IO_MEM_START);
 ramdisk ram0(8 * 1024); // 4 MB
@@ -91,26 +93,28 @@ void idle(){
 void init(){
     infof("init: start");
 
-    shared_ptr<process> test_proc = make_shared<kernel_process>(kernel_process_queue.alloc_pid(), (kernel_process::func_type)test_coroutine);
-    test_proc->set_name("test_coroutine");
-    // kernel_process_queue.push(test_proc);
+    // shared_ptr<process> test_proc = make_shared<kernel_process>(kernel_process_queue.alloc_pid(), (kernel_process::func_type)test_coroutine);
+    // test_proc->set_name("test_coroutine");
 
-    shared_ptr<process> test_disk_rw_proc = make_shared<kernel_process>(kernel_process_queue.alloc_pid(), (kernel_process::func_type)test_disk_rw);
-    test_disk_rw_proc->set_name("test_disk_rw");
 
-    shared_ptr<process> test_nfs_proc = make_shared<kernel_process>(kernel_process_queue.alloc_pid(), test_nfs);
-    test_nfs_proc->set_name("test_nfs");
+    // shared_ptr<process> test_disk_rw_proc = make_shared<kernel_process>(kernel_process_queue.alloc_pid(), (kernel_process::func_type)test_disk_rw);
+    // test_disk_rw_proc->set_name("test_disk_rw");
 
-    shared_ptr<process> test_nfs2_proc = make_shared<kernel_process>(kernel_process_queue.alloc_pid(), test_nfs2);
-    test_nfs2_proc->set_name("test_nfs2");
+    // shared_ptr<process> test_nfs_proc = make_shared<kernel_process>(kernel_process_queue.alloc_pid(), test_nfs);
+    // test_nfs_proc->set_name("test_nfs");
 
-    shared_ptr<user_process> test_user_proc = make_shared<user_process>(kernel_process_queue.alloc_pid());
-    test_user_proc->test_load_elf((uint64)s_apps, e_apps - s_apps);
-    test_user_proc->set_name("test_user_hello_world");
+    // shared_ptr<process> test_nfs2_proc = make_shared<kernel_process>(kernel_process_queue.alloc_pid(), test_nfs2);
+    // test_nfs2_proc->set_name("test_nfs2");
+
+    // shared_ptr<user_process> test_user_proc = make_shared<user_process>(kernel_process_queue.alloc_pid());
+    // test_user_proc->test_load_elf((uint64)s_apps, e_apps - s_apps);
+    // test_user_proc->set_name("test_user_hello_world");
 
     //kernel_process_queue.push(test_disk_rw_proc);
 
-    kernel_process_queue.push(test_user_proc);
+    shared_ptr<process> test_runner_proc = make_shared<kernel_process>(kernel_process_queue.alloc_pid(), run_tests);
+    test_runner_proc->set_name("test_runner");
+    kernel_process_queue.push(test_runner_proc);
 
     
 

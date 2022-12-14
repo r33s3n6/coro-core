@@ -11,11 +11,10 @@ inline volatile T& io(T& v) {
 }
 
 virtio_disk::virtio_disk(uint8* disk_pages) : block_device("virtio_disk"), disk_pages(disk_pages) {
-    //rw_buffer = (rw_buffer_t*)kernel_io_allocator.alloc_page();
-    //debugf("disk_pages: %p, rw_buffer: %p",disk_pages, (void*)rw_buffer);
+
 }
 virtio_disk::~virtio_disk() {
-    //kernel_io_allocator.free_page((void*)rw_buffer);
+
 }
 
 int virtio_disk::open(void* base_address) {

@@ -87,6 +87,9 @@ public:
 
             // create a new node
             buf = make_shared<derived_t>();
+            if (!buf || !(*buf)) {
+                co_return task_fail;
+            }
 
         } else {
             buf = *unused;

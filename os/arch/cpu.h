@@ -82,6 +82,7 @@ class cpu {
 
     int next_slot = 0;
     uint64 start_cycle;
+    uint64 stride = 0;
 
     public:
     cpu(){}
@@ -123,6 +124,13 @@ class cpu {
 
     void halt();
 
+    void set_stride(uint64 stride){
+        this->stride = stride;
+    }
+
+    uint64 get_stride(){
+        return stride;
+    }
 
 
 

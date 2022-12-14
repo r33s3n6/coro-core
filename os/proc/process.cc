@@ -34,9 +34,13 @@ void process::sleep() {
 }
 
 void process::wake_up() {
+    
     lock.lock();
     if(_state == SLEEPING) {
+        stride = cpu::my_cpu()->get_stride(); // TODO: WARNING: this is not right, but works for now
         _state = RUNNABLE;
+        
+        // debugf("wake up %s", name);
     }
     lock.unlock();
 }

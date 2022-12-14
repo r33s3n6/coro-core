@@ -53,7 +53,8 @@ task<void> __task_executor(promise<void>* p) {
     co_await t;
 
     if (p->get_status() == promise_base::fail) {
-        co_warnf("task_executor failed");
+        // co_warnf("task_executor failed");
+        warnf("task_executor failed");
     } 
     co_return task_ok;
 }
