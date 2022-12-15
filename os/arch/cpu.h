@@ -210,13 +210,14 @@ class cpu {
         c_sstatus(SSTATUS_SIE);
     }
 
-    static int local_irq_save(){
+    static bool local_irq_save(){
         int old = rc_sstatus(SSTATUS_SIE);
-        return old;
+        return (old & SSTATUS_SIE);
     }
 
-    static void local_irq_restore(int old){
-        s_sstatus(old & SSTATUS_SIE);
+    static void local_irq_restore(bool old){
+        if (old) s_sstatus(SSTATUS_SIE);
+        
     }
 
     // actually it is not safe

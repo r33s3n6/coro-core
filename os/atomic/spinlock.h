@@ -3,7 +3,8 @@
 
 #include <ccore/types.h>
 
-
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
 
 // if you get a deadlock in debugging, define TIMEOUT so that spinlock will panic after
 // some time, and you will see the debugging information
@@ -14,7 +15,13 @@ class cpu;
 
 class spinlock {
 public:
-    spinlock(const char* name = "unnamed") :_locked(0), core_id(-1), _name(name) {}
+    spinlock(const char* name = "unnamed") :
+    _locked(0) 
+    ,core_id(-1) 
+    #ifdef LOCK_DEBUG
+    ,_name(name) 
+    #endif
+    {}
 
     ~spinlock() {}
 
@@ -33,14 +40,15 @@ public:
 
 
     private:
-    volatile uint32 _locked;
-    // cpu* _cpu;
-
-    int core_id;
-    int old_status;
+    volatile uint8 _locked;
+    uint8 old_status;
+    uint16 core_id;
+    
+    #ifdef LOCK_DEBUG
     const char* _name;
+    #endif
 };
 
 
-
+#pragma GCC diagnostic pop
 #endif // SPINLOCK_H

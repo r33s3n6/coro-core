@@ -139,9 +139,11 @@ struct heap_block_t {
         uint32 next_free_index = 0;
         heap_block_t* next_block = nullptr;
         heap_block_t* next_free_block = nullptr;
+        #ifdef MEMORY_DEBUG
         uint8 free_map[PGSIZE/size/8];
+        #endif
 
-    } info ;
+    } info;
     static constexpr int capacity = (PGSIZE - sizeof(__heap_block_info_t)) / size;
     uint8 data[capacity][size] {0};
 
@@ -151,17 +153,19 @@ struct heap_block_t {
         }
 
         (*(uint32*)data[capacity-1]) = -1;
-
+        #ifdef MEMORY_DEBUG
         memset(info.free_map, 0, sizeof(info.free_map));
-
+        #endif
     }
 
     void* alloc() {
-        if (info.used == capacity) {
+        if (full()) {
             return nullptr;
         }
         void* ret = data[info.next_free_index];
+        #ifdef MEMORY_DEBUG
         bitmap_set((uint64*)info.free_map, info.next_free_index);
+        #endif
 
         info.next_free_index = (*(uint32*)ret);
         info.used++;
@@ -174,12 +178,13 @@ struct heap_block_t {
         if (index >= capacity) {
             panic("free");
         }
+        #ifdef MEMORY_DEBUG
         if (!bitmap_get((uint64*)info.free_map, index)) {
             debugf("free: %p, index: %d", ptr, index);
             panic("double free || free unallocated memory");
         }
         bitmap_clear((uint64*)info.free_map, index);
-
+        #endif
 
         (*(uint32*)ptr) = info.next_free_index;
         info.next_free_index = index;
@@ -193,6 +198,10 @@ struct heap_block_t {
     bool empty() {
         return info.used == 0;
     }
+
+    uint16 get_used() const {
+        return info.used;
+    }
 };
 
 
@@ -200,7 +209,7 @@ template <int size>
 class heap_allocator {
    public:
     heap_allocator(){
-        static_assert(size >= 8 && size%8 ==0 && size <= 1024, "heap allocator size must be 8~1024 and multiple of 8");
+        static_assert((size >= 8) && (size % 8 ==0) && (size <= 1024), "heap allocator size must be 8~1024 and multiple of 8");
     }
     void* alloc() {
         auto guard = make_lock_guard(lock);
@@ -210,10 +219,10 @@ class heap_allocator {
             if (next_free_block == nullptr) {
                 return nullptr;
             }
+            allocated += PGSIZE;
 
             // placement new
             new (next_free_block) heap_block_t<size>();
-            //next_free_block->info.allocator = this;
 
             // place it to the list
             next_free_block->info.next_block = head_block;
@@ -226,6 +235,9 @@ class heap_allocator {
         if (next_free_block->full()) {
             next_free_block = next_free_block->info.next_free_block;
         }
+
+        
+        used += size;
 
         return ret;
 
@@ -242,31 +254,67 @@ class heap_allocator {
             next_free_block = block;
         }
 
+        used -= size;
+
     }
 
     void truncate() {
         auto guard = make_lock_guard(lock);
         heap_block_t<size>* block = head_block;
         heap_block_t<size>* prev = nullptr;
+
+        #ifdef MEMORY_DEBUG
+        uint32 inefficient_blocks = 0;
+        uint32 total_blocks = 0;
+        uint32 freed_blocks = 0;
+        #endif
+
         while (block) {
+            heap_block_t<size>* next_block = block->info.next_block;
             if (block->empty()) {
+                
                 if (prev) {
-                    prev->info.next_block = block->info.next_block;
+                    prev->info.next_block = next_block;
                 } else {
-                    head_block = block->info.next_block;
+                    head_block = next_block;
                 }
                 kernel_allocator.free_page(block);
+                allocated -= PGSIZE;
+                #ifdef MEMORY_DEBUG
+                freed_blocks++;
+                #endif
             } else {
                 prev = block;
+                #ifdef MEMORY_DEBUG
+                if (block->get_used() < heap_block_t<size>::capacity * 0.1) {
+                    inefficient_blocks++;
+                }
+                #endif
             }
-            block = block->info.next_block;
+
+            #ifdef MEMORY_DEBUG
+            total_blocks++;
+            #endif
+
+            block = next_block;
+            
         }
+
+        #ifdef MEMORY_DEBUG
+        // if (inefficient_blocks)
+        //     debugf("truncate %d: freed %d, inefficient %d, total %d", size, freed_blocks, inefficient_blocks, total_blocks);
+        #endif
     }
 
+    
+
     private:
-    heap_block_t<size>* head_block;
-    heap_block_t<size>* next_free_block;
+    heap_block_t<size>* head_block = nullptr;
+    heap_block_t<size>* next_free_block = nullptr;
     spinlock lock;
+    public:
+    uint64 allocated = 0;
+    uint64 used = 0;
 };
 
 
@@ -274,6 +322,7 @@ class heap_allocator {
 
 struct large_mem_info {
     uint64 page_count;
+    uint64 requested_size;
 };
 
 class large_mem_allocator {

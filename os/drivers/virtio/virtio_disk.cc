@@ -122,20 +122,17 @@ void virtio_disk::close() {
 }
 
 task<int> virtio_disk::read(uint64 block_no, uint64 count, void *buf) {
-    std::optional<int> result = co_await disk_command(VIRTIO_BLK_T_IN,block_no, count, buf);
     // we do not handle error here
-    co_return result.value();
+    co_return *co_await disk_command(VIRTIO_BLK_T_IN, block_no, count, buf);
 }
 task<int> virtio_disk::write(uint64 block_no, uint64 count, const void *buf) {
-    std::optional<int> result = co_await disk_command(VIRTIO_BLK_T_OUT, block_no, count, (void*)buf);
     // we do not handle error here
-    co_return result.value();
+    co_return *co_await disk_command(VIRTIO_BLK_T_OUT, block_no, count, (void*)buf);
 }
 
 task<int> virtio_disk::flush() {
-    std::optional<int> result = co_await disk_command(VIRTIO_BLK_T_FLUSH, 0, 0, (void*)0);
     // we do not handle error here
-    co_return result.value();
+    co_return *co_await disk_command(VIRTIO_BLK_T_FLUSH, 0, 0, (void*)0);
 }
 
 uint64 virtio_disk::capacity() const {

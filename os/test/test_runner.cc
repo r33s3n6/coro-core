@@ -5,7 +5,7 @@
 
 
 void run_tests(void*) {
-    test::coroutine::test_bdev_rw test1(virtio_disk_id, 1024, 128);
+    test::coroutine::test_bdev_rw test1(virtio_disk_id, 1024, 100);
     test1.run();
     test1.print();
 }

@@ -31,8 +31,8 @@ void _panic(const char *s, const char* file, int line)
     if (panic_pending[cpu_id]) {
         __printf("during panic backtrace, another panic: %s\n", s);
     } else {
-        panic_pending[r_tp()] = 1;
-        kernel_console_logger.printf<true>(logger::log_level::ERROR, "[%d] %s:%d: panic: %s\n", cpu_id, file, line, s);
+        panic_pending[cpu_id] = 1;
+        kernel_console_logger.printf<true>(logger::log_level::ERROR, "%s:%d: panic: %s\n", file, line, s);
         cpu_ref->backtrace_coroutine();
         
     }

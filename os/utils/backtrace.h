@@ -25,8 +25,8 @@ static inline void __print_backtrace(void* frame_address) {
     void* frame[16] {0};
     void* ra[16] {0};
     frame[ 0] = frame_address;
-    ra   [ 0] = nullptr;
-    debugf("    %p: %p", frame[0], ra[0]);
+    ra   [ 0] = (void*)r_sepc();
+    debugf("    %p: at %p", frame[0], ra[0]);
     for (int i = 1; i < 16; i++) {
         if (frame[i-1] == nullptr) {
             break;

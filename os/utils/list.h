@@ -70,19 +70,22 @@ class list : noncopyable {
     }
 
 
-    data_t& push_back(){
-        return __push_back()->data;
-    }
-
-    data_t& push_front(){
-        return __push_front()->data;
-    }
+    // data_t& push_back(){
+    //     return __push_back()->data;
+    // }
+// 
+    // data_t& push_front(){
+    //     return __push_front()->data;
+    // }
 
     template <typename X>
     iterator push_back(X&& data) {
         static_assert(std::is_same_v<data_t, std::decay_t<X>>, "X must be the same type of data_t");
         node* new_node = __push_back();
-        new_node->data = std::forward<X>(data);
+        if (new_node) {
+            new_node->data = std::forward<X>(data);
+        }
+        
         return iterator(new_node);
     }
 
@@ -90,7 +93,9 @@ class list : noncopyable {
     iterator push_front(X&& data) {
         static_assert(std::is_same_v<data_t, std::decay_t<X>>, "X must be the same type of data_t");
         node* new_node = __push_front();
-        new_node->data = std::forward<X>(data);
+        if (new_node) {
+            new_node->data = std::forward<X>(data);
+        }
         return iterator(new_node);
     }
 
@@ -228,6 +233,7 @@ private:
 
     node* __push_back() {
         node* new_node = new node;
+        if (!new_node) return nullptr;
 
         new_node->next = tail;
         new_node->prev = tail->prev;
@@ -240,6 +246,7 @@ private:
 
     node* __push_front() {
         node* new_node = new node;
+        if (!new_node) return nullptr;
 
         new_node->next = head->next;
         new_node->prev = head;

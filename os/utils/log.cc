@@ -1,16 +1,13 @@
 #include "log.h"
 
-using logger::log_color::BROWN;
-using logger::log_color::CYAN;
-using logger::log_color::GREEN;
-using logger::log_color::PURPLE;
+using enum logger::log_color;
 
 file_logger kernel_logger;
 console_logger kernel_console_logger;
 
 logger::log_color debug_core_color[] = {
-    BROWN, PURPLE, CYAN,  GREEN,  BROWN, PURPLE, CYAN,  GREEN,  BROWN, PURPLE,
-    CYAN,  GREEN,  BROWN, PURPLE, CYAN,  GREEN,  BROWN, PURPLE, CYAN,  GREEN,
+    GRAY, DARK_GRAY, DARK_CYAN, DARK_MAGENTA, GRAY, DARK_GRAY, DARK_CYAN, DARK_MAGENTA,
+    GRAY, DARK_GRAY, DARK_CYAN, DARK_MAGENTA, GRAY, DARK_GRAY, DARK_CYAN, DARK_MAGENTA
 };
 
 

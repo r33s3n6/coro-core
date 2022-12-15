@@ -10,6 +10,7 @@ for line in lines:
         cmd = 'addr2line -C -f -p -e build/kernel ' + addr
         # execute the command and get the output
         output = os.popen(cmd).read()
+        output = output.replace("/mnt/ucore/ccore/", "")
         line = strs[0] + f'at ({addr})' + output
     
     print(line, end='')

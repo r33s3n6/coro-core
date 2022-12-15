@@ -15,10 +15,12 @@ void spinlock::lock() {
     int id = cpu::current_id();
 
     if (__holding()) {
+        #ifdef LOCK_DEBUG
         kernel_console_logger.printf<false>(
             logger::log_level::ERROR, 
             "lock \"%s\" is held by core %d, cannot be reacquired",
             _name, core_id);
+        #endif
         __panic("This cpu is acquiring a acquired lock");
     }
 
@@ -31,7 +33,9 @@ void spinlock::lock() {
     #ifdef SPINLOCK_TIMEOUT_CHECK
             uint64 now = r_cycle();
             if(now-start > timer::SECOND_TO_CYCLE(3)) {
+                #ifdef LOCK_DEBUG
                 __errorf("timeout lock name: %s, hold by cpu %d", _name, id);
+                #endif
                 __panic("spinlock timeout");
             }
     #endif
@@ -55,15 +59,17 @@ void spinlock::lock() {
 void spinlock::unlock() {
     // kernel_assert(holding(slock), "a core should hold the lock if it wants to release it");
     if (!__holding()) {
+        #ifdef LOCK_DEBUG
         kernel_console_logger.printf<false>(
                     logger::log_level::ERROR, 
                     "Error release lock: %s\n", _name);
+        #endif
         __panic("Try to release a lock when not holding it");
     }
 
 
     core_id = -1;
-    int old = old_status;
+    uint8 old = old_status;
     old_status = 0;
 
 
@@ -94,7 +100,7 @@ bool spinlock::__holding() {
 
 
 bool spinlock::holding() {
-    int old = cpu::local_irq_save();
+    uint8 old = cpu::local_irq_save();
     bool ret = __holding();
     cpu::local_irq_restore(old);
     return ret;

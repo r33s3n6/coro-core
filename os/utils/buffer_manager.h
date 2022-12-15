@@ -35,19 +35,22 @@ public:
         lock.lock();
 
         // if what we require is in flush list, wait for it finish
-        bool in_flush = false;
-        do {
-            in_flush = false;
-            for (auto& node : flush_list) {
-                if (node->match(std::forward<Args>(match_args)...)) {
-
-                    in_flush = true;
-                    // debugf("block_buffer: wait flush %d", block_no);
-                    co_await flush_queue.done(lock);
-                    break;
+        {
+            bool in_flush = false;
+            do {
+                in_flush = false;
+                for (auto& node : flush_list) {
+                    if (node->match(std::forward<Args>(match_args)...)) {
+                    
+                        in_flush = true;
+                        // debugf("block_buffer: wait flush %d", block_no);
+                        co_await flush_queue.done(lock);
+                        break;
+                    }
                 }
-            }
-        } while(in_flush);
+            } while(in_flush);
+        }
+
 
 
         for(auto it = buffer_list.begin(); it != buffer_list.end(); ++it) {

@@ -24,6 +24,8 @@
 #include <drivers/virtio/virtio_disk.h>
 #include <drivers/ramdisk/ramdisk.h>
 
+#include <mm/allocator.h>
+
 #include <test/test_runner.h>
 
 // uint8 __attribute__((aligned(PGSIZE))) virtio_disk_pages[2 * PGSIZE];
@@ -58,6 +60,7 @@ void init_globals(){
 
     ram0.open((void*)PHYSTOP);
 
+    debugf("heap allocator: sizeof(__heap_block_info_t) = %d", sizeof(heap_block_t<8>::__heap_block_info_t));
 
 }
 
@@ -257,7 +260,7 @@ extern "C" void kernel_init(uint64 hartid, uint64 device_tree)
     
     
 
-    infof("[%d] wait for other hart", hartid);
+    infof("wait for other hart");
 
     // wait for all hart started (TODO: seems useless)
     for(int i=0;i<NCPU;i++){
@@ -267,8 +270,7 @@ extern "C" void kernel_init(uint64 hartid, uint64 device_tree)
     
 
 
-
-    infof("%d: start scheduler" ,hartid);
+    infof("start scheduler");
     kernel_process_scheduler[hartid].run();
     
     

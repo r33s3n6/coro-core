@@ -50,7 +50,7 @@ public:
     void print() {
         uint64 last_time = 0;
         for (auto& record : records) {
-            infof("%s: %l us (diff %l us)", record.name.c_str(), record.timestamp, record.timestamp - last_time);
+            infof("%l us (diff %l us) (%s)", record.timestamp, record.timestamp - last_time, record.name.c_str());
             last_time = record.timestamp;
         }
     }
@@ -137,7 +137,10 @@ private:
         
         if (_async_failed) co_return task_fail;
 
-        // TODO: destroy all buffer
+        uint32 failed_count = *co_await kernel_block_buffer.destroy(test_device->device_id);
+        tr.record_timestamp("destroy done");
+
+        debugf("failed_count: %d, size: %d", failed_count, kernel_block_buffer.size());
 
         // increase random content
         set_subtask(nblocks * inc_times);
@@ -146,11 +149,16 @@ private:
             for (uint32 j = 0; j < inc_times; j++) {
                 kernel_task_scheduler[0].schedule(std::move(subtask_inc(i)));
             }
+            if (i % 16 == 15) {
+                debugf("i: %d", i);
+            }
         }
         co_await subtask_all_done();
-        
 
         if (_async_failed) co_return task_fail;
+
+        //co_await kernel_block_buffer.destroy(test_device->device_id);
+        //tr.record_timestamp("destroy done");
 
         // read and check
         set_subtask(nblocks);
@@ -159,7 +167,8 @@ private:
             kernel_task_scheduler[0].schedule(std::move(subtask_check(i)));
         }
         co_await subtask_all_done();
-        
+
+
         
         set_real_test_done(true);
 
@@ -220,18 +229,24 @@ private:
 
     task<void> subtask_inc(uint32 block_no) {
         {
-            auto buffer_ptr =
-                *co_await kernel_block_buffer.get(test_device, block_no);
-            if (!buffer_ptr) {
-                panic("!buffer_ptr");
-            }
-            auto buffer_ref = *co_await buffer_ptr->get_ref();
+            auto buffer_ptr = *co_await kernel_block_buffer.get(test_device, block_no);
+            // if (!buffer_ptr) {
+            //     warnf("!buffer_ptr, buffer_ptr_opt.has_value(): %d", buffer_ptr_opt.has_value());
+            //     panic("!buffer_ptr");
+            // }
+            // if (!buffer_ptr->data) {
+            //     panic("!buffer_ptr->data");
+            // }
+            // auto buffer_ref = *co_await buffer_ptr->get_ref();
+
+            co_await buffer_ptr->get();
+
             // try to get buffer for write
-            uint8* buf = buffer_ref->data;
             for (int i = 0; i < 1024; i++) {
-                buf[i]++;
+                buffer_ptr->data[i]++;
             }
-            buffer_ref->mark_dirty();
+            buffer_ptr->mark_dirty();
+            buffer_ptr->put();
         }
 
 

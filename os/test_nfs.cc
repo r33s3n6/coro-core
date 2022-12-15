@@ -20,9 +20,9 @@ uint64 a = 0;
 task<void> test_coro2(device_id_t) {
     debugf("test_coro2: start");
     // panic("test panic");
-    uint64* ptr = (uint64*)0x100uLL;
-    uint64 val = *ptr;
-    val = val;
+    // uint64* ptr = (uint64*)0x100uLL;
+    // uint64 val = *ptr;
+    // val = val;
     co_return task_ok;
 }
 

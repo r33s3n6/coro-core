@@ -73,7 +73,7 @@ void task_base::wake_up(){
 #ifdef HANDLE_MEMORY_ALLOC_FAIL
 
 task_fail_t promise_base::get_return_object_on_allocation_failure() {
-    kernel_console_logger.printf("alloc task failed\n");
+    warnf("alloc task failed");
     return task_fail;
 }
 #endif
@@ -171,6 +171,31 @@ void task_scheduler::start() {
     }
 }
 
+
+std::coroutine_handle<> coroutine_handle_fail(task_base curr) {
+    // if curr has error handler(its caller), we resume its caller
+    // otherwise, we set curr = curr.caller and continue this process
+    // eventually we would encounter task whose caller is task_executor,
+    // which has no caller and set the task's have_error_handler to true
+    // so we will resume the task_executor. if not so, we panic
+    while (true) {
+        promise_base* curr_promise = curr.get_promise();
+        if (!curr_promise->caller){
+            // top
+            panic("no error handler found");
+        } else if (curr_promise->has_error_handler){
+            // we set status of current task to fail,
+            // and resume its caller, so the caller would
+            // handle error properly
+            curr_promise->set_fail();
+            return curr_promise->caller.get_handle();
+        }
+        curr = curr_promise->caller.get_ref();
+    }
+}
+void coroutine_debug(const char* str) {
+    debugf("%s", str);
+}
 
 /*
 template <typename return_type>
