@@ -4,8 +4,14 @@
 
 
 
+
 void run_tests(void*) {
-    test::coroutine::test_bdev_rw test1(virtio_disk_id, 1024, 100);
+
+    // pt_malloc test
+
+    test::coroutine::test_bdev_rw test1(ramdisk_id, 1024, 190);
     test1.run();
     test1.print();
+
+
 }

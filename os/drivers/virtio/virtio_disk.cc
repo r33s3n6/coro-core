@@ -229,6 +229,7 @@ task<int> virtio_disk::disk_command(uint64 command, uint64 block_no, uint64 coun
         co_await request_queue.done(lock);
     }
 
+    debugf("got %d %d %d", idx[0], idx[1], idx[2]);
 
     // format the three descriptors.
     // qemu's virtio-blk.c reads them.

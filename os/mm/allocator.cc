@@ -9,6 +9,8 @@
 #include <utils/assert.h>
 #include "vmem.h"
 
+#include "ptmalloc.h"
+
 allocator kernel_allocator((void*)ekernel, (void*)IO_MEM_START);
 allocator kernel_io_allocator((void*)(IO_MEM_START + 2*PGSIZE), (void*)PHYSTOP); // first 2 pages are reserved for virtio disk
 
@@ -22,6 +24,8 @@ heap_allocator<512> kernel_heap_allocator_512;
 heap_allocator<1024> kernel_heap_allocator_1024;
 
 large_mem_allocator kernel_large_mem_allocator;
+
+bool use_ptmalloc = false;
 
 class memory_statistics {
     uint64 requested = 0;
@@ -159,9 +163,7 @@ void* __alloc(std::size_t size) {
     return ptr;
 }
 
-
-// TODO: failed when no memory
-void* operator new(std::size_t size) {
+void* default_alloc(std::size_t size) {
     void* ptr = __alloc(size);
     if (!ptr) {
         warnf("try to truncate heap allocator");
@@ -183,10 +185,16 @@ void* operator new(std::size_t size) {
         
     }
 
-    
-
     return ptr;
-    
+}
+
+// TODO: failed when no memory
+void* operator new(std::size_t size) {
+    if (use_ptmalloc)
+        return ptmalloc_malloc(size);
+    else
+        return default_alloc(size);
+
 }
 
 void* operator new[](std::size_t size) {
@@ -201,12 +209,7 @@ void trace_delete(){
     // printf("trace delete\n");
 }
 
-
-void operator delete(void* ptr) {
-    // debugf("delete %p", ptr);
-
-
-
+void default_delete(void* ptr) {
     if ((uint64)(ptr) >= VMEM_START) {
         kernel_large_mem_allocator.free(ptr);
         return;
@@ -246,8 +249,14 @@ void operator delete(void* ptr) {
 
         TRACE_FREE(size, size); // TODO: we cannot trace small allocation now
     }
-    
+}
 
+void operator delete(void* ptr) {
+    // debugf("delete %p", ptr);
+    if ((uint64)(ptr) >= MMAP_START)
+        ptmalloc_free(ptr);
+    else
+        default_delete(ptr);
     
 
     

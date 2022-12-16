@@ -6,6 +6,7 @@
 #define PHYSTOP      (0x80000000 + 128 * 1024 * 1024) // 128M
 
 #define VMEM_START (0x01'0000'0000uLL) // 4 GB, vmalloc start address
+#define MMAP_START (0x20'0000'0000uLL) // 32 GB, mmap start address
 
 // map the trampoline page to the highest address,
 // in both user and kernel space.

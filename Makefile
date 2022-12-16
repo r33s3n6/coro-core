@@ -26,7 +26,7 @@ CXX_SRCS = $(shell find $K/ -type f -name '*.cc')
 AS_SRCS = $(shell find $K/ -type f -name '*.S')
 CXX_OBJS = $(addprefix $(BUILDDIR)/, $(addsuffix .o, $(basename $(CXX_SRCS))))
 AS_OBJS = $(addprefix $(BUILDDIR)/, $(addsuffix .o, $(basename $(AS_SRCS))))
-OBJS = $(CXX_OBJS) $(AS_OBJS)
+OBJS = $(CXX_OBJS) $(AS_OBJS) third_party/ptmalloc3/libptmalloc3.a
 
 HEADER_DEP = $(addsuffix .d, $(basename $(CXX_OBJS)))
 

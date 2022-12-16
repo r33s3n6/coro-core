@@ -26,6 +26,8 @@ void operator delete[](void* ptr);
 
 void check_memory(); // debug
 
+extern bool use_ptmalloc;
+
 struct page_info {
     page_info* next_free_page = nullptr;
 };
