@@ -4,11 +4,13 @@
 #include <coroutine.h>
 
 #include <utils/wait_queue.h>
+#include <deque>
 
 task<void> __task_executor(promise<void>* p);
 
 class task_queue {
-    list<task_base> queue;
+    // list<task_base> queue;
+    std::deque<task_base> queue;
     spinlock lock {"task_queue.lock"};
     wait_queue wait_task_queue;
 

@@ -8,6 +8,8 @@
 
 #include <coroutine.h>
 
+#include <queue>
+
 class wait_queue_base {
     public:
     struct wait_queue_done {
@@ -61,7 +63,7 @@ class wait_queue_base {
 class wait_queue : public wait_queue_base {
 
     private:
-    list<sleepable*> sleepers;
+    std::deque<sleepable*> sleepers;
 
     public:
     void sleep(sleepable* sleeper) override {
