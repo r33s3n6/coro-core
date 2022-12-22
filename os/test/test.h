@@ -20,6 +20,32 @@ class test_base {
     bool _async_failed = false;
 };
 
+class time_recorder {
+    struct record_t {
+        uint64 timestamp;
+        std::string name;
+    };
+private:
+    std::vector<record_t> records;
+    uint64 time_base;
+public:
+    void reset() {
+        records.clear();
+        time_base = timer::get_time_us();
+        record_timestamp("reset");
+    }
+    void record_timestamp(const std::string& name) {
+        records.push_back(record_t{timer::get_time_us() - time_base, name});
+    }
+    void print() {
+        uint64 last_time = 0;
+        for (auto& record : records) {
+            infof("%l us (diff %l us) (%s)", record.timestamp, record.timestamp - last_time, record.name.c_str());
+            last_time = record.timestamp;
+        }
+    }
+};
+
 }
 
 

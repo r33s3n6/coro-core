@@ -1,14 +1,13 @@
 #include <utils/printf.h>
 #include <utils/panic.h>
-
-#include "allocator.h"
-
 #include <utils/log.h>
+#include <utils/assert.h>
+#include <utils/backtrace.h>
+
 #include <map>
 
-#include <utils/assert.h>
+#include "allocator.h"
 #include "vmem.h"
-
 #include "ptmalloc.h"
 
 allocator kernel_allocator((void*)ekernel, (void*)IO_MEM_START);
@@ -26,6 +25,7 @@ heap_allocator<1024> kernel_heap_allocator_1024;
 large_mem_allocator kernel_large_mem_allocator;
 
 bool use_ptmalloc = false;
+bool heap_debug_output = false;
 
 class memory_statistics {
     uint64 requested = 0;
@@ -62,22 +62,27 @@ static memory_statistics kernel_memory_statistics;
 #define TRACE_ALLOC(ptr, req, real) \
     do { \
         if (ptr) { \
-            kernel_memory_statistics.alloc((req), (real)); \
+            if (heap_debug_output) { \
+                debugf("alloc: %l(%l) -> %p", (uint64)(req), (uint64)(real), (ptr)); \
+                /*print_backtrace();*/ \
+            } \
+            kernel_memory_statistics.alloc((real), (real)); \
         } else { \
             errorf("request %l(%l) failed", (uint64)(req), (uint64)(real)); \
         } \
     } while (0)
+#define TRACE_FREE(req, real) \
+    do { \
+        if (heap_debug_output) debugf("free: %l(%l)", (uint64)(req), (uint64)(real)); \
+        kernel_memory_statistics.free((req), (real)); \
+    } while (0)
+
+
 #else
 #define TRACE_ALLOC(ptr, req, real)
-#endif
-
-#ifdef MEMORY_DEBUG
-#define TRACE_FREE(req, real) kernel_memory_statistics.free((req), (real))
-#else
 #define TRACE_FREE(req, real)
+
 #endif
-
-
 
 
 
@@ -111,8 +116,7 @@ void* __alloc(std::size_t size) {
 
     } else if (size == 1) {
         ptr = kernel_heap_allocator_8.alloc();
-        // TRACE_ALLOC(ptr, size, 8);
-        TRACE_ALLOC(ptr, 8, 8);
+        TRACE_ALLOC(ptr, size, 8);
     } else {
         int l = log2_64(size-1);
         switch (l) {
@@ -147,15 +151,10 @@ void* __alloc(std::size_t size) {
             break;
         }
 
-        // if (l<=2) {
-        //     TRACE_ALLOC(ptr, size, 8);
-        // } else {
-        //     TRACE_ALLOC(ptr, size, 2<<l);
-        // }
         if (l<=2) {
-            TRACE_ALLOC(ptr, 8, 8);
+            TRACE_ALLOC(ptr, size, 8);
         } else {
-            TRACE_ALLOC(ptr, 2<<l, 2<<l);
+            TRACE_ALLOC(ptr, size, 2<<l);
         }
 
     }
@@ -249,6 +248,8 @@ void default_delete(void* ptr) {
 
         TRACE_FREE(size, size); // TODO: we cannot trace small allocation now
     }
+
+    
 }
 
 void operator delete(void* ptr) {

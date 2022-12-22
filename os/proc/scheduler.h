@@ -3,8 +3,10 @@
 #include <ccore/types.h>
 #include <proc/process.h>
 
-#include <utils/list.h>
+// #include <utils/list.h>
 #include <atomic/lock.h>
+
+#include <deque>
 
 static const uint64 BIG_STRIDE = 0x7FFFFFFFLL;
 
@@ -12,7 +14,8 @@ void init_schedulers();
 
 // TODO: use a priority queue
 class process_queue {
-    list<shared_ptr<process>> queue;
+    list<shared_ptr<process>> _queue;
+    // std::deque<shared_ptr<process>> _queue;
     spinlock lock {"process_queue.lock"};
 
     spinlock pid_lock {"process_queue.pid_lock"};
@@ -24,7 +27,7 @@ public:
         auto guard = make_lock_guard(pid_lock);
         return next_pid++;
     }
-    int32 size() { return queue.size(); }
+    int32 size() { return _queue.size(); }
 };
 
 class process_scheduler {

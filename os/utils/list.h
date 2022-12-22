@@ -13,7 +13,6 @@ class list : noncopyable {
         data_t data;
         node* next;
         node* prev;
-        // char dummy[128];
     };
 
     struct iterator_base {
@@ -127,6 +126,11 @@ class list : noncopyable {
         _size = 0;
         head->next = tail;
         tail->prev = head;
+
+        while(node_cache_size > 0){
+            node_cache_size -= 1;
+            delete node_cache[node_cache_size];
+        }
     }
 
     iterator begin() { return iterator(head->next); }
@@ -188,7 +192,7 @@ class list : noncopyable {
         if (it.ptr == tail) {
             panic("insert_after: iterator is end()");
         }
-        node* new_node = new node;
+        node* new_node = alloc_node();
         new_node->data = data;
         new_node->next = it.ptr->next;
         new_node->prev = it.ptr;
@@ -201,7 +205,7 @@ class list : noncopyable {
         if (it.ptr == head) {
             panic("insert_before: iterator is begin()");
         }
-        node* new_node = new node;
+        node* new_node = alloc_node();
         new_node->data = data;
         new_node->next = it.ptr;
         new_node->prev = it.ptr->prev;
@@ -223,7 +227,7 @@ class list : noncopyable {
     void __remove(node* node) {
         node->prev->next = node->next;
         node->next->prev = node->prev;
-        delete node;
+        free_node(node);
         _size--;
     }
 private: 
@@ -231,8 +235,28 @@ private:
     node* tail;
     int _size;
 
+    node* node_cache[8];
+    int node_cache_size = 0;
+
+    node* alloc_node(){
+        if (node_cache_size > 0) {
+            return node_cache[--node_cache_size];
+        } else {
+            return new node;
+        }
+    }
+
+    void free_node(node* node){
+        if (node_cache_size < 8) {
+            node_cache[node_cache_size++] = node;
+        } else {
+            delete node;
+        }
+    }
+
     node* __push_back() {
-        node* new_node = new node;
+
+        node* new_node = alloc_node();
         if (!new_node) return nullptr;
 
         new_node->next = tail;
@@ -245,7 +269,7 @@ private:
     }
 
     node* __push_front() {
-        node* new_node = new node;
+        node* new_node = alloc_node();
         if (!new_node) return nullptr;
 
         new_node->next = head->next;

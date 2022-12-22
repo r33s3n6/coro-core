@@ -206,6 +206,7 @@ extern "C" void kernel_init(uint64 hartid, uint64 device_tree)
 
         // use custom malloc lib instead
         use_ptmalloc = false;
+        
 
         // kernel_allocator.set_debug(true);
 

@@ -36,16 +36,16 @@ int stride_cmp(uint64 a, uint64 b)
 shared_ptr<process> process_queue::pop(int core_id) {
     auto guard = make_lock_guard(lock);
 
-    if(queue.empty()){
+    if(_queue.empty()){
         // debug_core("task_queue is empty");
         return nullptr;
     }
 
 
-    auto min_it = queue.end();
+    auto min_it = _queue.end();
     uint64 min_stride = 0;
     
-    for(auto it = queue.begin(); it != queue.end(); ++it) {
+    for(auto it = _queue.begin(); it != _queue.end(); ++it) {
         auto& proc = *it;
         if(!proc->ready()){
             // debugf("process %p:( name: %s ) not ready" , (*it).get(), (*it)->get_name());
@@ -58,27 +58,27 @@ shared_ptr<process> process_queue::pop(int core_id) {
         if(proc->get_state() == process::state::SLEEPING){
             continue;
         }
-        if (min_it == queue.end() || stride_cmp(proc->stride, min_stride) < 0) {
+        if (min_it == _queue.end() || stride_cmp(proc->stride, min_stride) < 0) {
             // debugf("core %d: update min stride %d", core_id, (*it)->stride);
             min_stride = proc->stride;
             min_it = it;
         }
     }
 
-    if(min_it == queue.end()){
+    if(min_it == _queue.end()){
         // debug_core("no process ready");
         return nullptr;
     }
 
     auto ret = *min_it;
-    queue.erase(min_it);
+    _queue.erase(min_it);
 
     return ret;
 }
 
 void process_queue::push(const shared_ptr<process>& proc) {
     auto guard = make_lock_guard(lock);
-    queue.push_back(proc);
+    _queue.push_back(proc);
     // debug_core("push process %p: name: %s, queue_size:%d", proc.get(), proc->get_name(), queue.size());
 }
 
