@@ -60,7 +60,7 @@ void init_globals(){
 
     ram0.open((void*)PHYSTOP);
 
-    debugf("heap allocator: sizeof(__heap_block_info_t) = %d", sizeof(heap_block_t<8>::__heap_block_info_t));
+    // debugf("heap allocator: sizeof(__heap_block_info_t) = %d", sizeof(heap_block_t<8>::__heap_block_info_t));
 
 }
 
@@ -121,20 +121,6 @@ void init(){
 
     
 
-    // for(int i=0;i<10;i++){
-// 
-    //     int bind_core;
-    //     if (i<4){
-    //         bind_core = i;
-    //     } else {
-    //         bind_core = 0;
-    //     }
-    //     shared_ptr<process> proc = make_shared<kernel_process>(kernel_process_queue.alloc_pid(), test_bind_core, &bind_core, sizeof(bind_core));
-    //     proc->set_name(("N" + std::to_string(i) + " C" + std::to_string(bind_core)).c_str());
-    //     proc->binding_core = bind_core;
-    //     // debug_core("init: push process %s", proc->get_name());
-    //     kernel_process_queue.push(proc);
-    // }
 
 
 
@@ -184,13 +170,13 @@ extern "C" void kernel_init(uint64 hartid, uint64 device_tree)
         // all global variables are initialized (including kernel_allocator)
 
         infof("=======");
-        infof("[ccore] Boot hartid=%d", hartid);
-        infof("[ccore] Core count: %d", NCPU);
-        infof("[ccore] s_text=%p, e_text=%p", s_text, e_text);
-        infof("[ccore] s_rodata=%p, e_rodata=%p", s_rodata, e_rodata);
-        infof("[ccore] s_data=%p, e_data=%p", s_data, e_data);
-        infof("[ccore] s_bss_stack=%p, e_bss_stack=%p", boot_stack_top, boot_stack_bottom);
-        infof("[ccore] s_bss=%p, e_bss=%p", s_bss, e_bss);
+        infof("[ccore] Boot hartid = %d", hartid);
+        infof("[ccore] Core count:   %d", NCPU);
+        infof("[ccore] s_text:      %p, e_text:      %p", s_text, e_text);
+        infof("[ccore] s_rodata:    %p, e_rodata:    %p", s_rodata, e_rodata);
+        infof("[ccore] s_data:      %p, e_data:      %p", s_data, e_data);
+        infof("[ccore] s_bss_stack: %p, e_bss_stack: %p", boot_stack_top, boot_stack_bottom);
+        infof("[ccore] s_bss:       %p, e_bss:       %p", s_bss, e_bss);
 
         // init cpu (id and temp_stack)
         init_cpus();

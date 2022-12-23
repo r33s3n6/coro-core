@@ -215,6 +215,45 @@ class console_logger : public logger {
         return ret;
     }
 
+    int raw_printf(const char* fmt, ...) {
+        va_list args;
+        va_start(args, fmt);
+
+        console_printf_lock.lock();
+        int ret = __vprintf(fmt, args);
+        console_printf_lock.unlock();
+
+        va_end(args);
+        
+        return ret;
+    }
+
+    char getc() {
+        while (true) {
+            console_printf_lock.lock();
+            int ret = sbi_console_getchar();
+            console_printf_lock.unlock();
+            if (ret != -1){
+                return ret;
+            }
+        }
+        
+    }
+
+    void putc(char c) {
+        console_printf_lock.lock();
+        sbi_console_putchar(c);
+        console_printf_lock.unlock();
+    }
+
+    void lock() {
+        console_printf_lock.lock();
+    }
+
+    void unlock() {
+        console_printf_lock.unlock();
+    }
+
 
 };
 
@@ -373,5 +412,10 @@ extern logger::log_color debug_core_color[];
 #define __infof(fmt, ...)
 #define infof(fmt, ...)
 #endif //
+
+#define rawf(fmt, ...) kernel_console_logger.raw_printf(fmt "\n", ##__VA_ARGS__)
+#define _rawf(fmt, ...) kernel_console_logger.raw_printf(fmt, ##__VA_ARGS__)
+
+
 
 #endif //!__LOG_H__

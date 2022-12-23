@@ -75,7 +75,11 @@ task<void> nfs::unmount() {
 
     // we can assume nobody would (1) write sb, (2) create inode, after we set unmounted to true
     // co_await put_inode(root_inode);
-    root_inode->print();
+    {
+        auto root_inode_ref = *co_await root_inode->get_ref();
+        root_inode->print();
+    }
+
     root_inode = nullptr;
 
     co_await kernel_dentry_cache.destroy();
@@ -200,6 +204,8 @@ task<void> nfs::make_fs(device_id_t device_id, uint32 nblocks) {
 
     debugf("nfs::make_fs: waiting for unmount\n");
     co_await temp_fs.unmount();
+
+    co_return task_ok;
     
 }
 

@@ -26,31 +26,30 @@ pagetable_t kvmmake() {
     // kvmmap(kpgtbl, UART0, UART0, PGSIZE, PTE_R | PTE_W);
 
     // virtio mmio disk interface
-    debugf("virtio_disk va=%p pa=%p", VIRTIO0, VIRTIO0);
+    debugf("virtio_disk: va = %p pa = %p", VIRTIO0, VIRTIO0);
     kvmmap(kpgtbl, VIRTIO0, VIRTIO0, PGSIZE, PTE_R | PTE_W);
 
     // PLIC
-    debugf("plic va=%p pa=%p", PLIC, PLIC);
+    debugf("plic:        va = %p pa = %p", PLIC, PLIC);
     kvmmap(kpgtbl, PLIC, PLIC, 0x400000, PTE_R | PTE_W);
 
     // map kernel text executable and read-only.
-    debugf("kernel text va=%p -> [%p, %p]", KERNBASE, KERNBASE, (uint64)e_text);
+    debugf("kernel text: (va) %p -> [%p, %p)", KERNBASE, KERNBASE, (uint64)e_text);
     kvmmap(kpgtbl, KERNBASE, KERNBASE, (uint64)e_text - KERNBASE, PTE_R | PTE_X);
-    debugf("");
+
 
     // map kernel data and the physical RAM we'll make use of.
-    debugf("kernel data va=%p -> [%p, %p]", e_text, e_text, IO_MEM_START);
+    debugf("kernel data: (va) %p -> [%p, %p)", e_text, e_text, IO_MEM_START);
     kvmmap(kpgtbl, (uint64)e_text, (uint64)e_text, IO_MEM_START - (uint64)e_text, PTE_R | PTE_W);
-    debugf("");
 
-    debugf("io memory va=%p -> [%p, %p]", IO_MEM_START, IO_MEM_START, PHYSTOP);
+
+    debugf("io memory:   (va) %p -> [%p, %p)", IO_MEM_START, IO_MEM_START, PHYSTOP);
     kvmmap(kpgtbl, IO_MEM_START, IO_MEM_START, PHYSTOP - IO_MEM_START, PTE_R | PTE_W | PTE_MT_IO);
-    debugf("");
+
 
     // map trampoline
-    debugf("trampoline va=%p -> [%p, %p]", TRAMPOLINE, trampoline, trampoline + PGSIZE);
+    debugf("trampoline:  (va) %p -> [%p, %p)", TRAMPOLINE, trampoline, trampoline + PGSIZE);
     kvmmap(kpgtbl, TRAMPOLINE, (uint64)trampoline, PGSIZE, PTE_R | PTE_X);
-    debugf("");
 
     return kpgtbl;
 }
@@ -71,7 +70,8 @@ void kvminithart() {
 
     // update TLB
     sfence_vma();
-    infof("enable paging at %p", r_satp());
+
+    infof("enable paging, satp: %p", r_satp());
 }
 
 // Return the address of the PTE in page table pagetable

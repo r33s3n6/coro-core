@@ -7,6 +7,7 @@ extern "C" {
 void* memmove(void* dest, const void* src, std::size_t n);
 void* memcpy(void* dest, const void* src, std::size_t n);
 void* memset(void* s, int c, std::size_t n);
+void* memchr(const void* s, int c, std::size_t n);
 char* strdup(const char* s);
 char* strndup(const char* s, uint32 n);
 int strlen(const char *s);

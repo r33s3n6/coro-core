@@ -120,4 +120,6 @@ struct get_taskbase_t {
 extern task_queue kernel_task_queue;
 extern task_scheduler kernel_task_scheduler[NCPU];
 
+#define push_task(t) kernel_task_scheduler[cpu::current_id()].schedule(std::move(t))
+
 #endif

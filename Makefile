@@ -5,7 +5,7 @@ ifndef CPUS
 CPUS := 4
 endif
 
-DEBUG_MODE ?= 0
+DEBUG_MODE ?= 1
 
 K = os
 #U = user
@@ -127,7 +127,7 @@ QEMUOPTS = \
 
 
 run: build/kernel
-	$(CP) $(F)/empty.img $(F)/fs-copy.img
+	# $(CP) $(F)/empty.img $(F)/fs-copy.img
 	$(QEMU) $(QEMUOPTS) | tee qemu.log
 
 # QEMU's gdb stub command line changed in 0.11
@@ -136,7 +136,7 @@ QEMUGDB = $(shell if $(QEMU) -help | grep -q '^-gdb'; \
 	else echo "-s -p 15234"; fi)
 
 debug: build/kernel .gdbinit
-	$(CP) $(F)/empty.img $(F)/fs-copy.img
+	# $(CP) $(F)/empty.img $(F)/fs-copy.img
 	$(QEMU) $(QEMUOPTS) -S $(QEMUGDB) &
 	sleep 1
 	$(GDB)

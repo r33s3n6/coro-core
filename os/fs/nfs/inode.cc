@@ -436,6 +436,7 @@ task<int32> nfs_inode::lookup(shared_ptr<dentry> new_dentry) {
     
     while (true) {
         if (offset >= metadata.size) {
+            warnf("not found");
             co_return -1;
         }
         int64 read_size = *co_await read(&_dirent, offset, sizeof(dirent));
@@ -536,7 +537,7 @@ task<int32> nfs_inode::unlink(shared_ptr<dentry> old_dentry) {
     // make metadata valid
     co_await load();
 
-    debugf("unlink '%s'", old_dentry->name.data());
+    //debugf("unlink '%s'", old_dentry->name.data());
 
     while (true) {
         if (offset >= metadata.size) {
@@ -559,7 +560,7 @@ task<int32> nfs_inode::unlink(shared_ptr<dentry> old_dentry) {
                 {
                     auto inode_ref = *co_await old_inode->get_ref();
 
-                    debugf("unlink(inner) '%s' (%d)", old_dentry->name.data(), inode_ref->inode_number);
+                    //debugf("unlink(inner) '%s' (%d)", old_dentry->name.data(), inode_ref->inode_number);
                     
                     if (--inode_ref->metadata.nlinks == 0){
                         co_await inode_ref->truncate(0);

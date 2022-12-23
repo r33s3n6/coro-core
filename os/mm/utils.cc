@@ -37,6 +37,17 @@ void* memset(void* s, int c, std::size_t n) {
     return s;
 }
 
+void* memchr(const void* s, int c, std::size_t n) {
+    const uint8* p = (const uint8*)s;
+    uint8 uc = c;
+    for (std::size_t i = 0; i < n; i++) {
+        if (p[i] == uc) {
+            return (void*)(p + i);
+        }
+    }
+    return nullptr;
+}
+
 int strlen(const char *s)
 {
 	int n;

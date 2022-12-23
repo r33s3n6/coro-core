@@ -93,7 +93,14 @@ task<shared_ptr<dentry>> dentry_cache::get(shared_ptr<dentry> parent, const quic
 
 
     // fill new dentry
-    co_await parent->get_inode()->lookup(new_dentry);
+    auto ret = *co_await parent->get_inode()->lookup(new_dentry);
+
+    if (ret == -1) {
+        new_dentry->lock.lock();
+        new_dentry->parent = nullptr;
+        new_dentry->lock.unlock();
+        co_return nullptr;
+    }
 
     co_return new_dentry;
 }
@@ -127,6 +134,22 @@ task<shared_ptr<dentry>> dentry_cache::get_or_create(shared_ptr<dentry> parent, 
 
 task<shared_ptr<dentry>> dentry_cache::create(shared_ptr<dentry> parent, const char* name, shared_ptr<inode> inode) {
     quick_string_ref name_ref(name);
+
+    auto new_dentry = *co_await __get_free_dentry(name_ref, parent);
+
+    new_dentry->parent = parent;
+
+    if (inode) {
+        inode->set_dentry(new_dentry);
+        new_dentry->set_inode(inode);
+    }
+
+    co_return new_dentry;
+
+}
+
+task<shared_ptr<dentry>> dentry_cache::create(shared_ptr<dentry> parent, std::string_view name, shared_ptr<inode> inode) {
+    quick_string_ref name_ref(name.data(), name.size());
 
     auto new_dentry = *co_await __get_free_dentry(name_ref, parent);
 
@@ -187,6 +210,56 @@ task<shared_ptr<dentry>> dentry_cache::get_at(shared_ptr<dentry> current, const 
     
     co_return current;
 }
+
+task<shared_ptr<dentry>> dentry_cache::get_at(shared_ptr<dentry> current, std::string_view path) {
+
+
+    if (path.starts_with('/')) {
+        current = *co_await get(nullptr, ""); // get root
+        path.remove_prefix(1);
+    }
+
+    while (path.size() > 0) {
+
+        std::string_view path_component;
+        auto pos = path.find_first_of('/');
+
+        if (pos == 0) { // empty path component
+            path.remove_prefix(1);
+            continue;
+        } else if (pos == std::string_view::npos) {
+            path_component = path;
+            path.remove_prefix(path.size());
+        } else {
+            path_component = path.substr(0, pos);
+            path.remove_prefix(pos + 1);
+        }
+
+        if (path_component.size() == 1 && path_component[0] == '.') {
+            // current directory
+            continue;
+        }
+
+        if (path_component.size() == 2 && path_component[0] == '.' && path_component[1] == '.') {
+            // parent directory
+            if (current->parent == nullptr) {
+                // already at root
+                continue;
+            }
+            debugf("current: '%s' %p, parent: '%s' %p", current->name.data(), current, current->parent->name.data(), current->parent);
+            current = current->parent;
+            continue;
+        }
+
+
+        quick_string_ref name_ref(path_component.data(), path_component.size());
+        current = *co_await get(current, name_ref);
+
+    }
+    
+    co_return current;
+}
+
 
 
 task<void> dentry_cache::destroy() {

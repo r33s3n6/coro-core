@@ -2,8 +2,8 @@
 // for use by the kernel and user pages
 // from physical address 0x80000000 to PHYSTOP.
 #define KERNBASE (0x00'8020'0000uLL)
-#define IO_MEM_START (0x80000000 + 127 * 1024 * 1024)
-#define PHYSTOP      (0x80000000 + 128 * 1024 * 1024) // 128M
+#define IO_MEM_START (0x80000000uLL + 127 * 1024 * 1024)
+#define PHYSTOP      (0x80000000uLL + 128 * 1024 * 1024) // 128M
 
 #define VMEM_START (0x01'0000'0000uLL) // 4 GB, vmalloc start address
 #define MMAP_START (0x20'0000'0000uLL) // 32 GB, mmap start address
@@ -72,7 +72,6 @@ extern char e_bss[];
 
 
 extern char trampoline[];
-
 
 extern char boot_stack_top[];
 extern char boot_stack_bottom[];

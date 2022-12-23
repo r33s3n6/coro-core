@@ -13,6 +13,7 @@
 #include <mm/utils.h>
 #include <coroutine.h>
 
+#include <string>
 
 class inode;
 
@@ -73,7 +74,9 @@ class dentry_cache {
     task<shared_ptr<dentry>> get(shared_ptr<dentry> parent, const char* name);
 
     task<shared_ptr<dentry>> get_at(shared_ptr<dentry> current, const char* path);
+    task<shared_ptr<dentry>> get_at(shared_ptr<dentry> current, std::string_view path);
     task<shared_ptr<dentry>> get_or_create(shared_ptr<dentry> parent, const char* name, shared_ptr<inode> inode);
+    task<shared_ptr<dentry>> create(shared_ptr<dentry> parent, std::string_view name, shared_ptr<inode> inode);
     task<shared_ptr<dentry>> create(shared_ptr<dentry> parent, const char* name, shared_ptr<inode> inode);
     task<shared_ptr<dentry>> lookup(shared_ptr<dentry> parent, const quick_string_ref& name_ref);
 
