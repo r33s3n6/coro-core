@@ -99,7 +99,7 @@ void cpu::boot_hart() {
 void cpu::sample(uint64 all, uint64 busy) {
     // record one sample
     
-    // debug_core("sample: (%l/1000) %d %d", busy*1000/all, kernel_task_queue.size(), kernel_process_queue.size());
+    debug_core("sample: (%l/1000) %d %d", busy*1000/all, kernel_task_queue.size(), kernel_process_queue.size());
     sample_duration[next_slot] = all;
     busy_time[next_slot] = busy;
     next_slot = (next_slot + 1) % SAMPLE_SLOT_COUNT;

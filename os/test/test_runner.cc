@@ -14,9 +14,10 @@ void run_tests(void*) {
 
     // pt_malloc test
 
-    test::coroutine::test_bdev_rw test1(virtio_disk_id, 1024, 100);
-    test1.run();
-    test1.print();
+    // test::coroutine::test_bdev_rw test1(virtio_disk_id, 1024, 100);
+    // test1.run();
+    // test1.print();
+
     // test::coroutine::test_alloc test1(1);
     // test1.run();
 // 
@@ -37,9 +38,9 @@ void run_tests(void*) {
     // test5.run();
     // test5.print();
 
-    // test::process::test_sleep_task test5(100000, 100000);
-    // test5.run();
-    // test5.print();
+    test::process::test_sleep_task test5(100000, 100000);
+    test5.run();
+    test5.print();
 
     // auto bdev = device::get<block_device>(virtio_disk_id);
     // test::nfs::test_shell test6(bdev, 8192);
