@@ -325,9 +325,11 @@ void large_mem_allocator::free(void* ptr) {
     info-=1;
     kernel_assert(((uint64)info & (PGSIZE-1)) == 0, "large_mem_allocator::free: info is not page-aligned");
     kernel_assert((uint64)info >= VMEM_START, "large_mem_allocator::free: info is not in kernel virtual map section");
+    
+    TRACE_FREE(info->requested_size, info->page_count * PGSIZE);
 
     kvmunmap(kernel_pagetable, (uint64)info, info->page_count * PGSIZE, 1);
 
-    TRACE_FREE(info->requested_size, info->page_count * PGSIZE);
+    
 
 }

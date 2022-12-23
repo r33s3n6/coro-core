@@ -38,7 +38,7 @@ void process::wake_up() {
     lock.lock();
     if(_state == SLEEPING) {
         stride = cpu::my_cpu()->get_stride(); // TODO: WARNING: this is not right, but works for now
-        _state = RUNNABLE;
+        _state = WAKEN_UP;
         
         // debugf("wake up %s", name);
     }
@@ -352,7 +352,7 @@ int user_process::test_load_elf(uint64 start, uint64 size){
     trapframe_pa->sp = sp;
 
 
-    _state = RUNNABLE;
+    _state = WAKEN_UP;
     resume_func = user_trap_ret;
     return 0;
 }
@@ -387,7 +387,7 @@ bool user_process::run(){
             return true; 
         } else if (_state == EXITED || _state == ZOMBIE) {
             return false;
-        } else if (_state == SLEEPING || _state == RUNNABLE) { // process itself call sleep
+        } else if (_state == SLEEPING || _state == RUNNABLE || _state == WAKEN_UP) { // process itself call sleep
             return true;
         } else {
             panic("process state is invalid");
@@ -486,6 +486,7 @@ kernel_process::kernel_process(int pid, func_type func, void* arg, uint64 arg_si
     if(arg) {
         stack_top_va -= arg_size;
         memcpy((void*)stack_top_va, arg, arg_size);
+        // debugf("stack_top_va: %p, %p", stack_top_va, *(uint64*)stack_top_va);
     }
 
     memset(&_context, 0, sizeof(_context));
@@ -493,7 +494,7 @@ kernel_process::kernel_process(int pid, func_type func, void* arg, uint64 arg_si
     _context.sp = (uint64)stack_top_va;
     _context.a0 = (uint64)func;
 
-    _state = RUNNABLE;
+    _state = WAKEN_UP;
 
     // debug_core("kernel process %d created, stack_top_va: %p\n", pid, stack_top_va);
 }
@@ -552,7 +553,7 @@ bool kernel_process::run(){
         } else if (_state == EXITED) {
             __clean_resources();
             return false;
-        } else if ((_state == SLEEPING) || (_state == RUNNABLE)) {
+        } else if ((_state == SLEEPING) || (_state == RUNNABLE) || (_state == WAKEN_UP)) {
             return true; 
         } else {
             warnf("kernel process %d state is invalid: %d\n", pid, int(_state));

@@ -43,10 +43,16 @@ shared_ptr<process> process_queue::pop(int core_id) {
 
 
     auto min_it = _queue.end();
-    uint64 min_stride = 0;
+    // uint64 min_stride = 0;
+    
     
     for(auto it = _queue.begin(); it != _queue.end(); ++it) {
         auto& proc = *it;
+        if (proc->waken_up()) {
+            proc->set_runnable();
+
+        }
+
         if(!proc->ready()){
             // debugf("process %p:( name: %s ) not ready" , (*it).get(), (*it)->get_name());
             continue;
@@ -58,11 +64,15 @@ shared_ptr<process> process_queue::pop(int core_id) {
         if(proc->get_state() == process::state::SLEEPING){
             continue;
         }
-        if (min_it == _queue.end() || stride_cmp(proc->stride, min_stride) < 0) {
-            // debugf("core %d: update min stride %d", core_id, (*it)->stride);
-            min_stride = proc->stride;
-            min_it = it;
-        }
+
+        min_it = it;
+        break;
+
+        // if (min_it == _queue.end() || stride_cmp(proc->stride, min_stride) < 0) {
+        //     // debugf("core %d: update min stride %d", core_id, (*it)->stride);
+        //     min_stride = proc->stride;
+        //     min_it = it;
+        // }
     }
 
     if(min_it == _queue.end()){
@@ -116,6 +126,9 @@ void process_scheduler::run()
     while(true) {
         
         kernel_assert(!cpu::__timer_irq_on(), "timer irq should be off");
+
+        // wake up those who are waiting for future time
+        c->wake_up(); 
         
         auto process = shared_queue->pop(core_id);
 

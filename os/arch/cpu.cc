@@ -191,9 +191,51 @@ void cpu::backtrace_coroutine() {
     print_backtrace();
 }
 
+void cpu::__push_sleeper(uint64 wakeup_time, sleepable* sleeper) {
+
+    auto insert_pos = sleepers.end();
+    for (auto it = sleepers.begin(); it != sleepers.end(); ++it) {
+        if (wakeup_time < it->wakeup_time) {
+            insert_pos = it;
+            break;
+        }
+    }
+
+    
+    sleepers.insert_before(insert_pos, {wakeup_time, sleeper});
+}
+
 void cpu::sleep(wait_queue_base* wq, spinlock& lock) {
     kernel_assert(!cpu::local_irq_on(), "local_irq should be disabled");
     kernel_assert(current_process, "current_process should not be null");
     wq->wait_done(current_process, lock);
+    
+}
+
+void cpu::sleep(uint64 ticks, sleepable* sleeper) {
+    kernel_assert(!cpu::local_irq_on(), "local_irq should be disabled");
+    kernel_assert(current_process, "current_process should not be null");
+    __push_sleeper(r_time() + ticks, sleeper);
+}
+
+void cpu::sleep(uint64 ticks) {
+    kernel_assert(!cpu::local_irq_on(), "local_irq should be disabled");
+    kernel_assert(current_process, "current_process should not be null");
+    __push_sleeper(r_time() + ticks, current_process);
+
+    current_process->sleep();
+    yield();
+}
+
+void cpu::wake_up() {
+    uint64 now = r_time();
+    while (!sleepers.empty()) {
+        auto& sleeper = sleepers.front();
+        if (sleeper.wakeup_time > now) {
+            break;
+        }
+        sleeper.sleeper->wake_up();
+        sleepers.pop_front();
+    }
     
 }

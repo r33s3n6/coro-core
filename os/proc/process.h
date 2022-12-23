@@ -47,6 +47,7 @@ class process : public sleepable {
         INIT = 0,   
         ALLOCATED, // trapframe, stack and pagetable are allocated
         SLEEPING,
+        WAKEN_UP, // wait new stride
         RUNNABLE,  // text loaded
         RUNNING,
         KILLED,  // wait run to actually exit it
@@ -77,7 +78,14 @@ protected:
 
     void exit(int code);
     void kill();
+
+    void set_runnable() {
+        _state = RUNNABLE;
+    }
     
+    bool waken_up() const{
+        return _state == WAKEN_UP;
+    }
 
     bool ready() const{
         return _state == RUNNABLE;

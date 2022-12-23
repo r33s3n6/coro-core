@@ -80,18 +80,21 @@ class allocator {
             page->next_free_page = free_page_list;
             free_page_list = page;
             free_page_count++;
+
+            #ifdef MEMORY_DEBUG
+            if(debug_output){
+                debug_core("free_page: %p", pa);
+            }
+            memset((char*)pa + sizeof(page_info), 0x5a, PGSIZE - sizeof(page_info));
+            if(debug_output){
+                debug_core("free_page: %p done", pa);
+            }
+            #endif
         }
         
 
-        #ifdef MEMORY_DEBUG
-        if(debug_output){
-            debug_core("free_page: %p", pa);
-        }
-        memset((char*)pa + sizeof(page_info), 0x5a, PGSIZE - sizeof(page_info));
-        if(debug_output){
-            debug_core("free_page: %p done", pa);
-        }
-        #endif
+        
+
     }
 
     void* alloc_page(){
@@ -108,16 +111,15 @@ class allocator {
             page = free_page_list;
             free_page_list = page->next_free_page;
             free_page_count--;
+
+            #ifdef MEMORY_DEBUG
+            if(debug_output){
+                debug_core("alloc_page: %p", page);
+            }
+            memset(page, 0x5c, PGSIZE);
+            #endif
         }
 
-        // infof("alloc_page: %p", page);
-
-        #ifdef MEMORY_DEBUG
-        if(debug_output){
-            debug_core("alloc_page: %p", page);
-        }
-        memset(page, 0x5c, PGSIZE);
-        #endif
 
         return page;
     }

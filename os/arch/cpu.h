@@ -9,11 +9,13 @@
 #include <arch/riscv.h>
 #include <mm/layout.h>
 
-// #include <coroutine.h>
+
 #include <utils/panic.h>
 #include <utils/utility.h>
-#include <atomic/spinlock.h>
+#include <utils/list.h>
+#include <utils/sleepable.h>
 
+#include <atomic/spinlock.h>
 
 #include <functional>
 
@@ -54,26 +56,26 @@ struct context {
     uint64 a0;
 
 
-    // interrupt status
-    // uint64 sstatus_sie = 0;
-
     void print();
 };
-
-// constexpr int a0_offset = (uint64)&(((context*)0)->a0);
 
 extern "C" void swtch(context *, context *);
 
 class cpu_ref;
 
+struct sleep_info {
+    uint64 wakeup_time;
+    sleepable* sleeper;
+};
+
 // Per-CPU state.
 class cpu {
     process* current_process = nullptr;         // The process running on this cpu, or null.
     context saved_context;                      // swtch() here to enter scheduler().
-
     int core_id;
-
     uint8* temp_kstack;
+
+    list<sleep_info> sleepers;
 
 
     uint64 sample_duration[SAMPLE_SLOT_COUNT] {};
@@ -177,6 +179,9 @@ class cpu {
     void backtrace_coroutine();
 
     void sleep(wait_queue_base* wq, spinlock& lock);
+    void sleep(uint64 ticks);
+    void sleep(uint64 ticks, sleepable* sleeper);
+    void wake_up(); // call by scheduler
     void yield();
     void switch_back(context* c);
     void save_context_and_run(std::function<void()> func);
@@ -236,6 +241,7 @@ class cpu {
     private:
     volatile bool halted = false;
     volatile bool booted = false;
+    void __push_sleeper(uint64 wakeup_time, sleepable* sleeper);
 
 };
 

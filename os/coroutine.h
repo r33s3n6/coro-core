@@ -443,6 +443,20 @@ struct task : task_base {
     //}
 };
 
+struct sleep_awaiter {
+    bool await_ready() { return false; }
+    std::coroutine_handle<> await_suspend(task_base h) {
+        caller = std::move(h);
+        cpu::my_cpu()->sleep(ticks, &caller);
+
+        return std::noop_coroutine(); // go to scheduler
+    }
+    void await_resume() {}
+    sleep_awaiter(uint64 ticks) : ticks(ticks) {}
+    private:
+    uint64 ticks;
+    task_base caller;
+};
 
 
 #endif

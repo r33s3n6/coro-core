@@ -5,7 +5,7 @@ ifndef CPUS
 CPUS := 4
 endif
 
-DEBUG_MODE ?= 1
+DEBUG_MODE ?= 0
 
 K = os
 #U = user

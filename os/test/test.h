@@ -46,6 +46,13 @@ public:
     }
 };
 
+static uint64 random_seed = 1423;
+uint64 random() {
+    random_seed = random_seed * 1103515245 + 12345;
+    return random_seed;
+}
+
+
 }
 
 
