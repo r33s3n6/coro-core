@@ -75,10 +75,10 @@ task<void> nfs::unmount() {
 
     // we can assume nobody would (1) write sb, (2) create inode, after we set unmounted to true
     // co_await put_inode(root_inode);
-    {
-        auto root_inode_ref = *co_await root_inode->get_ref();
-        root_inode->print();
-    }
+    // {
+    //     auto root_inode_ref = *co_await root_inode->get_ref();
+    //     root_inode->print();
+    // }
 
     root_inode = nullptr;
 
@@ -120,7 +120,7 @@ task<void> nfs::unmount() {
         sb_dirty = false;
     }
 
-    print();
+    // print();
 
     
 
@@ -184,7 +184,7 @@ task<void> nfs::make_fs(device_id_t device_id, uint32 nblocks) {
     temp_fs.inode_table->metadata.nlinks = 1;
     temp_fs.inode_table->mark_dirty();
     //temp_fs.inode_table->mark_valid();
-    debugf("nfs::make_fs: inode_table: %p\n", temp_fs.inode_table.get());
+    debugf("nfs::make_fs: inode_table: %p", temp_fs.inode_table.get());
     
     dinode temp_dinode;
     temp_dinode.type = inode::ITYPE_NEXT_FREE_INODE;
@@ -199,10 +199,10 @@ task<void> nfs::make_fs(device_id_t device_id, uint32 nblocks) {
     temp_fs.root_inode->metadata.nlinks = 1;
     temp_fs.root_inode->mark_dirty();
     //temp_fs.root_inode->mark_valid();
-    debugf("nfs::make_fs: root_inode: %p\n", temp_fs.root_inode.get());
+    debugf("nfs::make_fs: root_inode: %p", temp_fs.root_inode.get());
 
 
-    debugf("nfs::make_fs: waiting for unmount\n");
+    debugf("nfs::make_fs: waiting for unmount");
     co_await temp_fs.unmount();
 
     co_return task_ok;

@@ -40,7 +40,7 @@ else
 CXXFLAGS += -O2 -D MEMORY_DEBUG
 endif
 
-CXXFLAGS += -fcoroutines -std=c++20 -fno-exceptions -fno-rtti -D HANDLE_MEMORY_ALLOC_FAIL# coroutine
+CXXFLAGS += -fcoroutines -std=c++20 -fno-exceptions -fno-rtti -D HANDLE_MEMORY_ALLOC_FAIL # coroutine
 CXXFLAGS += -foptimize-sibling-calls 
 CXXFLAGS += -D NCPU=$(CPUS) # cpu
 CXXFLAGS += -MD

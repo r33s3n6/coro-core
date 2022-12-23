@@ -368,6 +368,30 @@ class test_shell : public test_base {
         cwd = _dentry;
     }
 
+    task<void> test_bigfile(std::string_view& line) {
+        auto file_name = get_token(line);
+        auto file_dentry = *co_await kernel_dentry_cache.create(cwd, file_name, nullptr);
+
+        if (!file_dentry) {
+            rawf("touch: %s: File exists", CSTR(file_name));
+            co_return task_ok;
+        }
+
+        co_await cwd->get_inode()->create(file_dentry);
+
+        const char* content = "hello world, 1234567890abcdefghijklmnopqrstuvwxyz12345678901234\n";
+
+
+        {
+            simple_file sf(file_dentry->get_inode());
+            co_await sf.open();
+            for (int i=0; i < 1024 * 16; i++)
+                co_await sf.write(content, 64);
+            co_await sf.close();
+        }
+
+    }
+
 
     task<void> shell() {
 
@@ -392,6 +416,7 @@ class test_shell : public test_base {
             else if (cmd == "unlink")  CO_AWAIT_NOFAIL(do_unlink(line_view));
             else if (cmd == "link")    CO_AWAIT_NOFAIL(do_link(line_view));
             else if (cmd == "cd")      CO_AWAIT_NOFAIL(do_cd(line_view));
+            else if (cmd == "test_bigfile")      CO_AWAIT_NOFAIL(test_bigfile(line_view));
             else if (cmd == "help")    rawf("Commands: ls, mkfs, mount, unmount, cat, append, write, touch, mkdir, unlink, link, cd, help, exit");
                 
             else if (cmd == "exit") break;

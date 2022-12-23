@@ -408,7 +408,7 @@ task<int32> nfs_inode::create(shared_ptr<dentry> new_dentry) {
     
 
     auto new_inode = *co_await ((nfs*)fs)->alloc_inode();
-    new_inode->print();
+    // new_inode->print();
 
     {
         auto inode_ref = *co_await new_inode->get_ref();
