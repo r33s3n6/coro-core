@@ -37,7 +37,7 @@ ifeq ($(DEBUG_MODE), 1)
 CXXFLAGS += -Og -gdwarf-2 -fno-omit-frame-pointer -ggdb # debug
 CXXFLAGS += -D MEMORY_DEBUG -D COROUTINE_TRACE
 else
-CXXFLAGS += -O2 -D MEMORY_DEBUG
+CXXFLAGS += -O2
 endif
 
 CXXFLAGS += -fcoroutines -std=c++20 -fno-exceptions -fno-rtti -D HANDLE_MEMORY_ALLOC_FAIL # coroutine

@@ -34,13 +34,14 @@ void run_tests(void*) {
     // test::coroutine::test_sleep test4(10);
     // test4.run();
 
-    // test::coroutine::test_sleep_task test5(100000, 100000);
-    // test5.run();
-    // test5.print();
-
-    test::process::test_sleep_task test5(100000, 100000);
+    test::coroutine::test_sleep_task test5(1000, 100000);
     test5.run();
     test5.print();
+
+    // test::process::test_sleep_task test5(1000, 100000);
+    // test5.run();
+    // test5.print();
+    debugf("done");
 
     // auto bdev = device::get<block_device>(virtio_disk_id);
     // test::nfs::test_shell test6(bdev, 8192);
