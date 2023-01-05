@@ -42,7 +42,7 @@ make debug -j4
 - `inode/dentry`缓存
 - `debug`模式下对协程栈和线程栈的`backtrace`, 使用`gdb`可以在内核异常处获得完整的调试信息
 
-![week13_1](C:\Users\20115\Desktop\week13_1.png)
+![week13_1](assets/week13_1.png)
 
 - 用户态elf格式文件加载执行（未完成`syscall`)
 
@@ -53,7 +53,7 @@ assets/ 			进展报告资源
 reports/			中期和期末汇报
 bootloader/			opensbi
 nfs/				磁盘镜像
-os/					主要代码
+os/				主要代码
 	arch/			架构相关代码，中断和上下文切换等
 	atomic/			锁
 	ccore/			一些宏定义和类型定义
@@ -61,8 +61,8 @@ os/					主要代码
 	device/			设备，块设备，块设备缓存
 	drivers/		串口，虚拟磁盘，内存盘驱动
 	file/			未完成的文件相关syscall
-	fs/				文件系统
-	mm/				内存管理，内存分配器
+	fs/			文件系统
+	mm/			内存管理，内存分配器
 	proc/			进程管理，调度器，elf加载器
 	sbi/			sbi接口
 	syscall/		syscall分发
@@ -73,11 +73,10 @@ os/					主要代码
 	kernel.ld		链接脚本
 	init.cc			内核入口
 		
-third_party/		第三方内存分配器
+third_party/			第三方内存分配器
 user/				用户空间程序（仅用于测试elf加载器）
-backtrace.py		自动解析backtrace地址
+backtrace.py			自动解析backtrace地址
 dev_log.md			进展报告
-
 
 ```
 
